@@ -1,0 +1,25 @@
+<!doctype html><meta charset=utf-8><title>audio-notes pipeline demo</title>
+<style>body{font:14px system-ui;margin:20px;max-width:1000px}canvas{width:100%;height:230px;border:1px solid #888;background:#fafafa}
+input[type=text]{width:340px}#lines div{padding:3px 0;border-bottom:1px solid #eee}.me{color:#0a6}.them{color:#c50}b{display:inline-block;width:45px}
+#stats{margin:8px 0;font-weight:600}</style>
+<h2>audio-notes: capture → VAD → ASR demo</h2>
+<p>Empty paths use built-in fixtures (me: Zira voice, them: David voice). Optional paths: 16-bit PCM WAV.<br>
+me <input type=text id=me placeholder="(default)"> them <input type=text id=them placeholder="(default)">
+model <select id=model><option>tiny.en<option>base.en</select> <button id=go>Start</button></p>
+<div id=stat>idle</div><div id=stats></div><canvas id=cv width=1000 height=230></canvas>
+<div id=lines></div>
+<script>
+let W=null,S={};const cv=document.getElementById('cv'),g=cv.getContext('2d');
+let AU=null,played=false;
+go.onclick=async()=>{AU=['me','them'].map(k=>{const a=new Audio('/audio/'+k+'?'+Date.now());a.play().then(()=>a.pause()).catch(()=>{});return a});played=false;const r=await fetch('/',{method:'POST',body:JSON.stringify({me:me.value.trim(),them:them.value.trim(),model:model.value})}).then(r=>r.json());if(r.error)alert(r.error);W=null;lines.innerHTML=''};
+function draw(){g.clearRect(0,0,1000,230);if(!W)return;const dur=Math.max(W.me.dur,W.them.dur);const X=t=>t/dur*1000;
+[['me',0,'#00aa66'],['them',115,'#cc5500']].forEach(([k,y0,c])=>{const w=W[k];g.fillStyle='#888';g.font='11px sans-serif';g.fillText(k,4,y0+12);
+ g.fillStyle='#999';w.peaks.forEach((p,i)=>{const x=X(i/w.n_per_s),h=p*50;g.fillRect(x,y0+57-h,1,2*h+1)});
+ (S.segments||[]).filter(s=>s.speaker==k).forEach(s=>{g.fillStyle=c+'33';g.fillRect(X(s.t0),y0,X(s.t1)-X(s.t0),114);g.strokeStyle=c;g.strokeRect(X(s.t0),y0,X(s.t1)-X(s.t0),114)})});
+if(S.elapsed!=null){g.strokeStyle='red';g.beginPath();g.moveTo(X(S.elapsed),0);g.lineTo(X(S.elapsed),230);g.stroke()}}
+async function poll(){try{S=await fetch('/state').then(r=>r.json());if(S.wave)W=S.wave;if(AU&&!played&&S.status==='running'){played=true;AU.forEach(a=>{a.currentTime=Math.max(0,S.elapsed||0);a.play().catch(()=>{})})}stat.textContent=(S.status||'idle')+(S.error?' — ERROR '+S.error:'');
+ const sp=S.asr_wall>0?(S.asr_audio/S.asr_wall).toFixed(1)+'x real time':'-';
+ stats.textContent=S.asr_audio!=null?`ASR: ${S.asr_audio.toFixed(1)}s audio in ${S.asr_wall.toFixed(2)}s → ${sp}   |  segments: ${S.segments.length}`:'';
+ lines.innerHTML=(S.segments||[]).slice().sort((a,b)=>a.t0-b.t0).map(s=>`<div class=${s.speaker}><b>${s.speaker}</b>[${s.t0.toFixed(1)}–${s.t1.toFixed(1)}s] ${s.text} <small>(appeared at ${s.at.toFixed(1)}s)</small></div>`).join('');draw()}catch(e){}}
+setInterval(poll,300);
+</script>
