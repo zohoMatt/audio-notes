@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>audio-notes</title>
+<link rel="stylesheet" href="/static/style.css?token=__TOKEN__">
+</head>
+<body>
+<header>
+  <h1>audio-notes</h1>
+  <span id="status" class="pill off">offline</span>
+</header>
+<div id="layout">
+  <aside>
+    <h2>Sessions</h2>
+    <ul id="sessions"></ul>
+  </aside>
+  <main>
+    <div id="title"></div>
+    <div id="transcript"></div>
+    <button id="jump" hidden>Jump to latest &darr;</button>
+  </main>
+</div>
+<script src="/static/app.js?token=__TOKEN__"></script>
+</body>
+</html>
