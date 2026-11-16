@@ -1,0 +1,22 @@
+{
+  "them_budget.wav": {
+    "text": "The quarterly budget review is scheduled for Thursday afternoon.",
+    "voice": "Microsoft David Desktop",
+    "speaker": "them"
+  },
+  "them_release.wav": {
+    "text": "We decided to postpone the release until the security audit is finished.",
+    "voice": "Microsoft David Desktop",
+    "speaker": "them"
+  },
+  "me_followup.wav": {
+    "text": "I will send the updated project proposal to the whole team tomorrow morning.",
+    "voice": "Microsoft Zira Desktop",
+    "speaker": "me"
+  },
+  "me_question.wav": {
+    "text": "Can you share the customer feedback summary before our next meeting?",
+    "voice": "Microsoft Zira Desktop",
+    "speaker": "me"
+  }
+}
