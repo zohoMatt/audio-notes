@@ -1,10 +1,33 @@
-"""Owned by the integration step (after tracks A-D land): `tray`, `record`. `mcp` is ready."""
+"""`tray`, `record`, `mcp`: the commands that run things. Heavy imports stay inside the bodies."""
 
 from __future__ import annotations
 
+import dataclasses
+import logging
+import time
+from pathlib import Path
+from typing import Optional
+
 import typer
 
-from ._todo import not_implemented
+
+def _setup_logging(to_file: bool = False) -> None:
+    handlers: list[logging.Handler] = [logging.StreamHandler()]
+    if to_file:
+        # The packaged tray has no console, so keep a log file next to the data.
+        from audio_notes import paths
+
+        try:
+            paths.data_dir().mkdir(parents=True, exist_ok=True)
+            handlers.append(logging.FileHandler(paths.data_dir() / "audio-notes.log", encoding="utf-8"))
+        except OSError:
+            pass
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        handlers=handlers,
+        force=True,
+    )
 
 
 def register(app: typer.Typer) -> None:
@@ -17,10 +40,91 @@ def register(app: typer.Typer) -> None:
 
     @app.command()
     def tray() -> None:
-        """Start the tray daemon."""
-        not_implemented("tray")
+        """Start the tray icon and the local web panel."""
+        _setup_logging(to_file=True)
+        from audio_notes.config import Config
+        from audio_notes.recorder import Recorder
+        from audio_notes.store.reader import StoreReader
+        from audio_notes.tray.app import TrayApp
+        from audio_notes.web.server import PanelServer
+
+        cfg = Config.from_env()
+        panel = PanelServer(StoreReader(), cfg.web_port)
+        try:
+            panel.start()
+        except RuntimeError as e:
+            typer.echo(
+                f"Cannot start the panel on port {cfg.web_port}: {e}\n"
+                "Is audio-notes already running? (set AUDIO_NOTES_WEB_PORT to use another port)",
+                err=True,
+            )
+            raise typer.Exit(1)
+        recorder = Recorder(cfg)
+        try:
+            ran = TrayApp(recorder, panel.url).run()
+        finally:
+            recorder.stop()
+            panel.stop()
+        if not ran:
+            typer.echo("Recording notice declined; nothing was started.")
 
     @app.command()
-    def record() -> None:
-        """Record without UI; Ctrl+C to stop."""
-        not_implemented("record")
+    def record(
+        no_mic: bool = typer.Option(False, "--no-mic", help="Do not capture the microphone."),
+        model: Optional[str] = typer.Option(None, "--model", help="ASR model, e.g. tiny.en, base.en, small.en."),
+        them_file: Optional[Path] = typer.Option(
+            None, "--them-file", help="Transcribe this WAV as 'them' instead of capturing system audio."
+        ),
+        me_file: Optional[Path] = typer.Option(
+            None, "--me-file", help="Transcribe this WAV as 'me' instead of capturing the microphone."
+        ),
+        fast: bool = typer.Option(False, "--fast", help="With --them-file/--me-file: feed files faster than real time."),
+    ) -> None:
+        """Record without a UI; Ctrl+C stops. With WAV files it transcribes them instead (offline)."""
+        _setup_logging()
+        from audio_notes.capture.file_source import FileSource
+        from audio_notes.config import Config
+        from audio_notes.recorder import Recorder
+        from audio_notes.store.reader import StoreReader
+
+        cfg = Config.from_env()
+        if model:
+            cfg = dataclasses.replace(cfg, model=model)
+
+        file_sources: list[FileSource] = []
+        for path, speaker in ((them_file, "them"), (me_file, "me")):
+            if path is None:
+                continue
+            if not path.is_file():
+                typer.echo(f"No such file: {path}", err=True)
+                raise typer.Exit(1)
+            file_sources.append(FileSource(path, speaker, realtime=not fast))
+
+        recorder = Recorder(
+            cfg,
+            mic_enabled=not no_mic,
+            **({"source_factory": lambda _mic: file_sources} if file_sources else {}),
+        )
+        typer.echo(f"Loading model {cfg.model} (the first run downloads it)...")
+        try:
+            recorder.start()
+        except Exception as e:
+            typer.echo(f"Could not start recording: {e}", err=True)
+            raise typer.Exit(1)
+        session_id = recorder.session_id
+        typer.echo(f"Recording session {session_id} -> {recorder.session_path}")
+        try:
+            if file_sources:
+                for src in file_sources:
+                    src.join()
+            else:
+                typer.echo("Press Ctrl+C to stop.")
+                while True:
+                    time.sleep(0.5)
+        except KeyboardInterrupt:
+            pass
+        finally:
+            typer.echo("Stopping (finishing pending transcription)...")
+            recorder.stop()
+        segments, _ = StoreReader().read_segments(session_id)
+        typer.echo(f"Done: {len(segments)} segment(s) in session {session_id}.")

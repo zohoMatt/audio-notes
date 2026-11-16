@@ -104,6 +104,7 @@ audio-notes/
 │       ├── __main__.py         # 仅 from .cli import app; app()
 │       ├── config.py           # 默认值 + 环境变量（设备、模型档位、端口）
 │       ├── paths.py            # %APPDATA% 路径、会话文件名
+│       ├── recorder.py         # Recorder：串起采集 → 处理 → ASR → 存储；实现托盘的 RecorderController，`record` 与 `tray` 共用
 │       │
 │       ├── cli/                # 命令行入口（懒加载重依赖）
 │       │   ├── __init__.py     # Typer app，注册子命令
@@ -147,7 +148,9 @@ audio-notes/
 │   ├── test_vad.py
 │   ├── test_asr.py             # 喂 wav，断言文本含关键词
 │   ├── test_cli.py             # 子命令冒烟测试
-│   └── test_web.py             # Host 校验、token、SSE 冒烟
+│   ├── test_web.py             # Host 校验、token、SSE 冒烟
+│   ├── test_e2e_recorder.py    # FileSource + 假 ASR：说话人标签、错误处理（无需模型）
+│   └── test_e2e_record_mcp.py  # `record` 转写 wav，再经真实 MCP stdio 读回（真实 tiny.en）
 │
 └── scripts/
     └── dump_devices.py         # M1 调试用
