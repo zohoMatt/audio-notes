@@ -1,0 +1,43 @@
+<#
+ Build the PyInstaller onedir bundle (and the Inno Setup installer if iscc is found).
+ Usage (repo root):  pwsh installer/build.ps1 [-Version 1.2.3] [-SkipInstaller]
+ Uses an isolated environment under build\ so the shared .venv is never touched.
+#>
+param(
+    [string]$Version = "",
+    [switch]$SkipInstaller
+)
+$ErrorActionPreference = "Stop"
+$root = Split-Path -Parent $PSScriptRoot
+Set-Location $root
+
+$env:UV_PROJECT_ENVIRONMENT = Join-Path $root "build\venv"
+uv sync --locked --group build --no-dev
+if ($LASTEXITCODE) { throw "uv sync failed" }
+
+if (-not $Version) {
+    $Version = (& uv run --no-sync python -c "from audio_notes import __version__ as v; print(v)").Trim()
+}
+# Inno wants a plain dotted version; drop local/dev suffixes (+g1234, .dev3).
+$InnoVersion = ($Version -replace '[+].*$', '') -replace '\.dev\d+', ''
+Write-Host "Version: $Version (installer: $InnoVersion)"
+
+Remove-Item -Recurse -Force "$root\dist\audio-notes", "$root\build\pyi" -ErrorAction SilentlyContinue
+uv run --no-sync pyinstaller installer\audio-notes.spec --noconfirm --distpath dist --workpath build\pyi
+if ($LASTEXITCODE) { throw "PyInstaller failed" }
+
+$size = (Get-ChildItem "$root\dist\audio-notes" -Recurse | Measure-Object Length -Sum).Sum / 1MB
+Write-Host ("Bundle: dist\audio-notes ({0:N0} MB)" -f $size)
+
+if ($SkipInstaller) { return }
+$iscc = (Get-Command iscc -ErrorAction SilentlyContinue).Source
+if (-not $iscc) {
+    foreach ($p in "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe", "$env:ProgramFiles\Inno Setup 6\ISCC.exe",
+                   "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe") {
+        if (Test-Path $p) { $iscc = $p; break }
+    }
+}
+if (-not $iscc) { Write-Warning "Inno Setup (iscc) not found; skipping installer. Install: winget install JRSoftware.InnoSetup"; return }
+& $iscc "/DAppVersion=$InnoVersion" installer\audio-notes.iss
+if ($LASTEXITCODE) { throw "iscc failed" }
+Write-Host "Installer: dist\audio-notes-setup-$InnoVersion.exe"

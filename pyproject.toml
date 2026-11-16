@@ -6,7 +6,21 @@ build-backend = "hatchling.build"
 name = "audio-notes"
 dynamic = ["version"]
 description = "Lightweight tray tool: capture system audio, transcribe locally, expose the transcript to Claude via MCP."
+readme = "README.md"
 requires-python = ">=3.10"
+keywords = ["audio", "transcription", "whisper", "mcp", "claude", "windows"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Win32 (MS Windows)",
+    "Intended Audience :: End Users/Desktop",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Sound/Audio :: Speech",
+]
+# No LICENSE file exists yet; add `license = "..."` and `license-files` once one is chosen.
 dependencies = [
     "typer>=0.12",
     "mcp>=1.2",
@@ -23,8 +37,15 @@ dependencies = [
 [project.scripts]
 audio-notes = "audio_notes.cli:app"
 
+# PLACEHOLDERS: replace with the real repository once it exists.
+[project.urls]
+Homepage = "https://github.com/OWNER/audio-notes"
+Repository = "https://github.com/OWNER/audio-notes"
+Issues = "https://github.com/OWNER/audio-notes/issues"
+
 [dependency-groups]
 dev = ["pytest", "httpx"]
+build = ["pyinstaller>=6.10"]
 
 [tool.hatch.version]
 source = "vcs"

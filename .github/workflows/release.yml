@@ -1,0 +1,112 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4.2.2
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v6.3.1
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - name: Cache Hugging Face models
+        uses: actions/cache@v4.2.3
+        with:
+          path: ~\.cache\huggingface
+          key: hf-models-${{ runner.os }}-v1
+      - run: uv sync --locked
+      - run: uv run pytest
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4.2.2
+        with:
+          fetch-depth: 0 # full history + tags so hatch-vcs can compute the version
+      - uses: astral-sh/setup-uv@v6.3.1
+      - run: uv build
+      - uses: actions/upload-artifact@v4.6.2
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  publish-testpypi:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/audio-notes
+    permissions:
+      id-token: write # Trusted Publishing (OIDC), no stored token
+    steps:
+      - uses: actions/download-artifact@v4.3.0
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@v1.12.4
+        with:
+          repository-url: https://test.pypi.org/legacy/
+
+  publish-pypi:
+    needs: publish-testpypi
+    runs-on: ubuntu-latest
+    # The `pypi` environment must have "Required reviewers" set: that is the manual approval gate.
+    environment:
+      name: pypi
+      url: https://pypi.org/p/audio-notes
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4.3.0
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@v1.12.4
+
+  installer:
+    needs: test
+    runs-on: windows-latest
+    permissions:
+      contents: write # create the GitHub Release
+    steps:
+      - uses: actions/checkout@v4.2.2
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v6.3.1
+        with:
+          python-version: "3.12"
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+      - name: Build bundle and installer
+        shell: pwsh
+        run: ./installer/build.ps1
+      # OPTIONAL: drop this step (and installer/smoke_test.py) to remove the smoke test.
+      - name: Smoke test (optional)
+        shell: pwsh
+        run: |
+          $env:UV_PROJECT_ENVIRONMENT = "build\venv"
+          uv run --no-sync python installer/smoke_test.py dist/audio-notes/audio-notes.exe
+      - name: Compute installer SHA256
+        id: hash
+        shell: pwsh
+        run: |
+          $f = Get-ChildItem dist/audio-notes-setup-*.exe | Select-Object -First 1
+          $h = (Get-FileHash $f.FullName -Algorithm SHA256).Hash.ToLower()
+          "### Installer SHA256`n`n``$h  $($f.Name)```n" | Out-File -FilePath release-body.md -Encoding utf8
+          Get-Content release-body.md
+      - uses: softprops/action-gh-release@v2.2.2
+        with:
+          files: dist/audio-notes-setup-*.exe
+          body_path: release-body.md
+          generate_release_notes: true
