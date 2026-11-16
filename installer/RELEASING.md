@@ -4,7 +4,25 @@ Everything the workflows can do on their own is in `.github/workflows/`. These a
 the repository owner can do. The workflows have **not** been run on GitHub yet; expect to fix small
 things on the first tag (try a `v0.0.1rc1`-style tag first; TestPyPI/PyPI versions can never be reused).
 
-## One-time setup
+## Installer only (no PyPI setup needed)
+
+The installer job does not depend on PyPI. Pushing a tag builds the Windows installer and attaches
+it to a GitHub Release, with its SHA256 in the notes:
+
+```
+git tag v0.1.0a1
+git push origin v0.1.0a1
+```
+
+- Tags like `v0.1.0a1`, `v0.1.0rc1`, `v0.1.0.dev1` are marked as **pre-releases** automatically.
+- The PyPI jobs are skipped until you set the repository variable `PUBLISH_TO_PYPI` to `true`
+  (Settings > Secrets and variables > Actions > Variables), after the setup below.
+- To try the build without publishing anything: Actions tab > Release > "Run workflow". The
+  installer is then available as the `installer` workflow artifact (kept for a limited time);
+  no Release is created.
+- A pushed tag creates a **public** Release; delete the release and tag on GitHub to retract it.
+
+## One-time setup (for PyPI)
 
 1. **Push the repository to GitHub** (`zohoMatt/audio-notes`). The project URLs and the MIT
    license (`LICENSE`, `license` field in `pyproject.toml`) are already set; they are frozen into

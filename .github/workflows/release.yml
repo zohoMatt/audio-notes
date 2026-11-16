@@ -3,6 +3,9 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  # Manual run from the Actions tab: builds everything and keeps the installer as a downloadable
+  # workflow artifact, but publishes nothing (no GitHub Release, no PyPI).
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -41,8 +44,11 @@ jobs:
           path: dist/
           if-no-files-found: error
 
+  # PyPI publishing stays off until you set the repository variable PUBLISH_TO_PYPI to "true"
+  # (Settings > Secrets and variables > Actions > Variables) after configuring Trusted Publishing.
   publish-testpypi:
     needs: build
+    if: startsWith(github.ref, 'refs/tags/v') && vars.PUBLISH_TO_PYPI == 'true'
     runs-on: ubuntu-latest
     environment:
       name: testpypi
@@ -60,6 +66,7 @@ jobs:
 
   publish-pypi:
     needs: publish-testpypi
+    if: startsWith(github.ref, 'refs/tags/v') && vars.PUBLISH_TO_PYPI == 'true'
     runs-on: ubuntu-latest
     # The `pypi` environment must have "Required reviewers" set: that is the manual approval gate.
     environment:
@@ -105,8 +112,24 @@ jobs:
           $h = (Get-FileHash $f.FullName -Algorithm SHA256).Hash.ToLower()
           "### Installer SHA256`n`n``$h  $($f.Name)```n" | Out-File -FilePath release-body.md -Encoding utf8
           Get-Content release-body.md
-      - uses: softprops/action-gh-release@v2.2.2
+      - name: Keep the installer as a workflow artifact (also on manual runs)
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: installer
+          path: dist/audio-notes-setup-*.exe
+          if-no-files-found: error
+      - name: Detect pre-release tag (v0.1.0a1, v0.1.0rc1, v0.1.0.dev1)
+        id: pre
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $pre = $env:GITHUB_REF_NAME -match '\d(a|b|rc)\d+$|\.dev\d+$'
+          "prerelease=$($pre.ToString().ToLower())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+      - name: Publish the GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2.2.2
         with:
           files: dist/audio-notes-setup-*.exe
           body_path: release-body.md
           generate_release_notes: true
+          prerelease: ${{ steps.pre.outputs.prerelease == 'true' }}
