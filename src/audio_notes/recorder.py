@@ -14,6 +14,7 @@ from audio_notes.asr.base import Transcriber
 from audio_notes.capture.base import AudioChunk, AudioSource, Speaker
 from audio_notes.config import Config
 from audio_notes.processing.runner import PipelineRunner
+from audio_notes.processing.vad import VadSegmenter
 from audio_notes.store.writer import SessionWriter
 
 log = logging.getLogger(__name__)
@@ -162,7 +163,15 @@ class Recorder:
         transcriber = self._transcriber_ready()
         sources = [_Guarded(s, self._source_failed) for s in self._source_factory(self._mic)]
         writer = SessionWriter()
-        runner = PipelineRunner(sources, transcriber, writer)
+        cfg = self._config
+        runner = PipelineRunner(
+            sources,
+            transcriber,
+            writer,
+            vad_factory=lambda: VadSegmenter(
+                silence_ms=cfg.vad_silence_ms, max_s=cfg.vad_max_s
+            ),
+        )
         try:
             runner.start()
             # The system-audio side is the point of the tool: without it, or with no source
