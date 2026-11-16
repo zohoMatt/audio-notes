@@ -1,6 +1,6 @@
 # audio-notes 技术架构
 
-> 状态：草案。"文件共享 + stdio MCP"与"数据放 `%APPDATA%`"两项按此文档采用，如需变更再讨论。
+> 状态：草案。"文件共享 + stdio MCP"按此文档采用。数据目录：打包版放在程序目录旁的 `data` 文件夹，pip/uv 安装和源码运行放 `%APPDATA%\audio-notes`，可用 `AUDIO_NOTES_DATA_DIR` 覆盖（原因见第 6 节"数据目录"一行）。
 
 ## 1. 总体架构：两个进程，文件共享
 
@@ -26,7 +26,7 @@ flowchart LR
         W -. 状态 .-> TRAY
     end
 
-    subgraph F["本地文件 (%APPDATA%/audio-notes)"]
+    subgraph F["本地文件 (程序目录/data 或 %APPDATA%/audio-notes)"]
         J[("sessions/*.jsonl")]
         S[("status.json<br/>含心跳")]
     end
@@ -103,7 +103,7 @@ audio-notes/
 │       ├── __init__.py
 │       ├── __main__.py         # 仅 from .cli import app; app()
 │       ├── config.py           # 默认值 + 环境变量（设备、模型档位、端口）
-│       ├── paths.py            # %APPDATA% 路径、会话文件名
+│       ├── paths.py            # 数据目录（环境变量 > 程序目录/data > %APPDATA%）、会话文件名
 │       ├── recorder.py         # Recorder：串起采集 → 处理 → ASR → 存储；实现托盘的 RecorderController，`record` 与 `tray` 共用
 │       │
 │       ├── cli/                # 命令行入口（懒加载重依赖）
@@ -207,14 +207,14 @@ audio-notes setup claude         输出 / 写入（--write）Claude 的 MCP 配�
 | Web 面板前端 | 原生 HTML / JS（EventSource） | 无构建步骤，无 Node | 设置编辑留到第二阶段 |
 | 存储 | JSONL + status.json | 单写者、多读者，无需 IPC 或数据库 | cursor 即 seq；读者需容忍末行不完整 |
 | 并发模型 | threading | 采集与 ctranslate2 推理都会释放 GIL | 不需要 multiprocessing |
-| 数据目录 | `%APPDATA%\audio-notes\` | 转写属于用户数据，不混入代码仓库 | |
+| 数据目录 | 打包版：程序目录旁的 `data`；pip/uv：`%APPDATA%\audio-notes\` | 转写属于用户数据，不混入代码仓库；打包版放程序旁，托盘、CLI、MCP 同目录自然一致，不需要用户设置环境变量 | 微软商店版应用（如 Claude 桌面端）对 AppData 有私有重定向，会让子进程看到不同的 `%APPDATA%`，所以打包版不用它 |
 | 安装包（M6） | PyInstaller onedir + Inno Setup | 用户无需 Python；onedir 避免 onefile 每次解压拖慢 MCP 启动 | 未签名，SmartScreen 提示 |
 | CI/CD | GitHub Actions + PyPI Trusted Publishing | 无需存 token；标签触发；PyPI 发布手动批准 | 版本号由 hatch-vcs 从标签生成 |
 | macOS（后续） | ScreenCaptureKit | 采集层抽象接口，其余模块不变 | 需屏幕录制权限 |
 
 ## 7. 数据格式
 
-目录：`%APPDATA%\audio-notes\sessions\2026-11-16_14-30.jsonl`
+目录：`<数据目录>\sessions\2026-11-16_14-30.jsonl`（数据目录见第 6 节"数据目录"一行）
 
 ```json
 {"seq": 12, "t0": 83.2, "t1": 86.9, "speaker": "them", "text": "..."}

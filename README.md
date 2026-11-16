@@ -3,8 +3,10 @@
 A lightweight Windows tray tool that captures **system audio** (what you hear) and your **microphone**,
 transcribes both **locally** with [faster-whisper](https://github.com/SYSTRAN/faster-whisper) on the CPU,
 and lets Claude read the transcript through an [MCP](https://modelcontextprotocol.io) server.
-Nothing is uploaded: audio never leaves your machine, and transcripts are stored under
-`%APPDATA%\audio-notes\`.
+Nothing is uploaded: audio never leaves your machine. Transcripts are stored in the `data` folder next to
+the program when you use the installer or the packaged build (so the tray, the command line and the MCP
+server always agree on where they are), and under `%APPDATA%\audio-notes\` when you install with
+pip / uv. Set `AUDIO_NOTES_DATA_DIR` to put them somewhere else.
 
 ## Install
 

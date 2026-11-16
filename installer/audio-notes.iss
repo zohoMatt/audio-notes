@@ -29,8 +29,14 @@ ChangesEnvironment=yes
 Name: "autostart"; Description: "Start Audio Notes when I sign in to Windows"; Flags: unchecked
 Name: "addtopath"; Description: "Add the audio-notes command to PATH"; Flags: unchecked
 
+[Dirs]
+; Transcripts live in {app}\data (see audio_notes/paths.py). Make it writable for normal users
+; even when an admin install put the program under Program Files. The uninstaller leaves it
+; alone while it still contains transcripts.
+Name: "{app}\data"; Permissions: users-modify
+
 [Files]
-Source: "..\dist\audio-notes\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion createallsubdirs
+Source: "..\dist\audio-notes\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion createallsubdirs; Excludes: "data\*"
 
 [Icons]
 Name: "{group}\Audio Notes"; Filename: "{app}\audio-notes-tray.exe"

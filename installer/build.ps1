@@ -22,9 +22,19 @@ if (-not $Version) {
 $InnoVersion = ($Version -replace '[+].*$', '') -replace '\.dev\d+', ''
 Write-Host "Version: $Version (installer: $InnoVersion)"
 
+# When you run the bundle from dist\, your transcripts live in dist\audio-notes\data and
+# PyInstaller replaces the whole output folder, so move that folder aside and put it back.
+$keep = "$root\build\data-keep"
+Remove-Item -Recurse -Force $keep -ErrorAction SilentlyContinue
+if (Test-Path "$root\dist\audio-notes\data") { Move-Item "$root\dist\audio-notes\data" $keep }
 Remove-Item -Recurse -Force "$root\dist\audio-notes", "$root\build\pyi" -ErrorAction SilentlyContinue
 uv run --no-sync pyinstaller installer\audio-notes.spec --noconfirm --distpath dist --workpath build\pyi
-if ($LASTEXITCODE) { throw "PyInstaller failed" }
+$pyiExit = $LASTEXITCODE
+if (Test-Path $keep) {
+    New-Item -ItemType Directory -Force "$root\dist\audio-notes" | Out-Null
+    Move-Item $keep "$root\dist\audio-notes\data"
+}
+if ($pyiExit) { throw "PyInstaller failed" }
 
 $size = (Get-ChildItem "$root\dist\audio-notes" -Recurse | Measure-Object Length -Sum).Sum / 1MB
 Write-Host ("Bundle: dist\audio-notes ({0:N0} MB)" -f $size)
