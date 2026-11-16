@@ -6,8 +6,9 @@ things on the first tag (try a `v0.0.1rc1`-style tag first; TestPyPI/PyPI versio
 
 ## One-time setup
 
-1. **Push the repository to GitHub** and replace the `OWNER` placeholders in `pyproject.toml`
-   (`[project.urls]`). Decide on a LICENSE and add the `license` field to `pyproject.toml`.
+1. **Push the repository to GitHub** (`zohoMatt/audio-notes`). The project URLs and the MIT
+   license (`LICENSE`, `license` field in `pyproject.toml`) are already set; they are frozen into
+   each published version's metadata, so check them before the first upload.
 2. **Create the projects and Trusted Publishers** (no API tokens are stored anywhere):
    - PyPI: https://pypi.org/manage/account/publishing/ -> "Add a pending publisher"
      - PyPI project name: `audio-notes`

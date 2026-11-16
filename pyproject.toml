@@ -20,7 +20,8 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Topic :: Multimedia :: Sound/Audio :: Speech",
 ]
-# No LICENSE file exists yet; add `license = "..."` and `license-files` once one is chosen.
+license = "MIT"
+license-files = ["LICENSE"]
 dependencies = [
     "typer>=0.12",
     "mcp>=1.2",
@@ -37,11 +38,10 @@ dependencies = [
 [project.scripts]
 audio-notes = "audio_notes.cli:app"
 
-# PLACEHOLDERS: replace with the real repository once it exists.
 [project.urls]
-Homepage = "https://github.com/OWNER/audio-notes"
-Repository = "https://github.com/OWNER/audio-notes"
-Issues = "https://github.com/OWNER/audio-notes/issues"
+Homepage = "https://github.com/zohoMatt/audio-notes"
+Repository = "https://github.com/zohoMatt/audio-notes"
+Issues = "https://github.com/zohoMatt/audio-notes/issues"
 
 [dependency-groups]
 dev = ["pytest", "httpx"]

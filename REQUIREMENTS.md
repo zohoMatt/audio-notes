@@ -63,6 +63,15 @@
 - **F22** 托盘菜单"连接到 Claude"：调用 `setup claude` 写入 Claude 的 MCP 配置，写入前必须弹窗确认；配置中使用 `audio-notes` 可执行文件的**绝对路径**（Claude 桌面端子进程 PATH 可能不完整）。CLI 的 `setup claude` 默认只打印配置，加 `--write` 才写入。
 - **F23** CI/CD（GitHub Actions）：push/PR 触发 Windows 上的 pytest；推送 `v*` 标签触发构建，依次发布 TestPyPI、PyPI（使用 Trusted Publishing，PyPI 发布需手动批准），并构建安装包挂到 GitHub Releases。版本号由 git 标签生成（hatch-vcs）。
 
+- **F33** 分发渠道优先级：MVP 以 `uv tool install` / `pip install` 为主要推荐渠道（不会触发 SmartScreen 的下载拦截）；Windows 安装包作为附加渠道。
+- **F34** 防误报与拦截缓解（MVP 必做）：
+  - PyInstaller 使用 onedir，不使用 UPX 等压缩。
+  - 安装包只在 GitHub Actions 上构建；GitHub Release 说明中附 SHA256 校验值。
+  - README 与发布说明写明：未签名程序会触发 SmartScreen（"更多信息 → 仍要运行"）；开启 Smart App Control 的 Windows 11 可能直接拦截未签名程序，没有放行选项，此时建议改用 pip/uv 安装。
+  - 每次发布后向 Microsoft Defender 及主要杀毒厂商提交误报申诉（流程写入发布说明）。
+  - 视误报情况再评估自行编译 PyInstaller 引导程序。
+- **F35** 代码签名（MVP 不做，列为触发条件）：当需要面向非技术用户分发时再评估。候选方案：Microsoft Trusted Signing（有地域与申请者身份限制，需先确认资格）、传统 OV 证书、Microsoft Store（MSIX，由商店签名，但需按商店要求打包与审核）。价格与政策以官方页面为准。
+
 ### 3.7 命令行（CLI）
 - **F24** 单一入口 `audio-notes`（亦可 `python -m audio_notes`），MVP 子命令：
   - `tray`：启动托盘守护进程。
@@ -112,7 +121,7 @@
 - 远端多人说话人分离（Speaker 1/2/3）
 - 云端 ASR、中文及多语言
 - 滚动摘要、会后自动总结
-- macOS 支持、自动更新、安装包代码签名（未签名的 exe 可能触发 SmartScreen / 杀毒软件提示，MVP 接受）
+- macOS 支持、自动更新、安装包代码签名（MVP 接受未签名带来的提示，触发条件与候选方案见 F35）
 - 设置界面（含 CPU/GPU 切换、模型档位切换，包括 Web 面板中的设置编辑）、数据自动清理
 - 通过网络访问 Web 面板（仅限本机）
 
@@ -132,7 +141,7 @@
 - 选定模型档位（`base.en` / `small.en`，int8 量化），并实测系统音频 + 麦克风双路并发时的 CPU 占用与延迟（预期 CPU 可行，仅需挑选平衡点）。
 - MCP 是拉取式，若用户希望 Claude 主动打断提醒，需要在第二阶段引入直连 API 或其他机制。
 - 安装包体积（ctranslate2、onnxruntime 较重，预计数百 MB 量级，需实际打包后确认）。
-- 未签名 exe 的 SmartScreen / 杀毒误报对首批用户的影响。
+- 未签名 exe 的 SmartScreen / 杀毒误报对首批用户的影响，以及 Smart App Control 对未签名程序的直接拦截；缓解措施见 F33–F35，实际误报率需在首次发布后观察。
 - 本地 Web 服务的安全性：确认 Host 校验与 token 方案足以防御 DNS rebinding；确认 MCP SDK 已带入的 Starlette / uvicorn 可复用，避免额外依赖。
 
 ## 9. 手动测试清单（不做自动化，开发后期统一与用户讨论并由用户手测）
