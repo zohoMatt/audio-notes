@@ -96,22 +96,81 @@
     });
   }
 
+  let failures = 0, ctl = { available: false }, busy = false;
+
+  function setMsg(text, isErr) {
+    const msg = $("ctl-msg");
+    msg.textContent = text || "";
+    msg.title = text || "";
+    msg.className = "ctl-msg" + (isErr ? " err" : "");
+    msg.hidden = !text;
+  }
+
+  function renderControl() {
+    const btn = $("rec-btn");
+    const rec = !!ctl.recording;
+    btn.className = "rec-btn" + (rec ? " rec" : "");
+    btn.textContent = busy
+      ? (rec ? "Stopping…" : ctl.downloading ? "Downloading model…" : "Starting…")
+      : rec ? "■ Stop recording" : "● Start recording";
+    btn.disabled = busy || !ctl.available;
+    btn.title = ctl.available ? "" : (ctl.reason || "Recording control is unavailable.");
+    if (busy) return;
+    if (!ctl.available) setMsg(ctl.reason ? "No recorder attached" : "", false);
+    else setMsg(ctl.error, true);
+  }
+
+  async function toggleRecording() {
+    if (busy || !ctl.available) return;
+    busy = true;
+    setMsg("", false);
+    renderControl();
+    let err = null;
+    try {
+      const r = await fetch("/api/recording?" + q({}), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ recording: !ctl.recording }),
+      });
+      let data = null;
+      try { data = await r.json(); } catch (e) { /* plain-text error body */ }
+      if (data) ctl = { ...ctl, ...data };
+      if (!r.ok) err = (data && (data.error || data.reason)) || `Request failed (${r.status})`;
+    } catch (e) {
+      err = "Could not reach the panel server.";
+    }
+    busy = false;
+    renderControl();
+    if (err) setMsg(err, true);
+    poll();
+  }
+
+  async function getJson(path) {
+    const r = await fetch(path + "?" + q({}));
+    if (!r.ok) throw new Error(`${path}: HTTP ${r.status}`);
+    return r.json();
+  }
+
   async function poll() {
     try {
-      const [st, ss] = await Promise.all([
-        fetch("/api/status?" + q({})).then((r) => r.json()),
-        fetch("/api/sessions?" + q({})).then((r) => r.json()),
-      ]);
+      const [st, ss, c] = await Promise.all([getJson("/api/status"), getJson("/api/sessions"), getJson("/api/control")]);
+      failures = 0;
       const pill = $("status");
       pill.className = "pill " + (st.recording ? "rec" : st.alive ? "idle" : "off");
       pill.textContent = st.recording ? `recording · ${st.segments} lines` : st.alive ? "idle" : "recorder offline";
       sessions = ss;
       renderSessions();
+      if (!busy) { ctl = c; renderControl(); }
     } catch (e) {
-      $("status").className = "pill off";
-      $("status").textContent = "panel unreachable";
+      // A single failed poll (slow response, wake from sleep) is not an outage: report after two in a row.
+      if (++failures >= 2) {
+        $("status").className = "pill off";
+        $("status").textContent = "panel unreachable";
+      }
     }
   }
+
+  $("rec-btn").onclick = toggleRecording;
 
   $("jump").onclick = toBottom;
   box.addEventListener("scroll", () => { if (nearBottom()) $("jump").hidden = true; });

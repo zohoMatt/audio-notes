@@ -199,3 +199,85 @@ def test_panel_server_port_in_use_raises():
         srv = PanelServer(StoreReader(), s.getsockname()[1])
         with pytest.raises(RuntimeError):
             srv.start()
+
+
+class FakeController:
+    def __init__(self, fail_start=None):
+        self.recording = False
+        self.downloading = False
+        self.error = None
+        self.starts = self.stops = 0
+        self.fail_start = fail_start
+
+    def start(self):
+        self.starts += 1
+        if self.fail_start:
+            self.error = self.fail_start
+            raise RuntimeError(self.fail_start)
+        self.recording = True
+
+    def stop(self):
+        self.stops += 1
+        self.recording = False
+
+    def is_recording(self):
+        return self.recording
+
+    def last_error(self):
+        return self.error
+
+    def is_downloading_model(self):
+        return self.downloading
+
+
+def ctl_client(controller):
+    return TestClient(create_app(StoreReader(), TOKEN, port=8765, controller=controller))
+
+
+def post(client, body, token=TOKEN, headers=HOST):
+    url = "/api/recording" + ("" if token is None else f"?token={token}")
+    return client.post(url, json=body, headers=headers)
+
+
+def test_control_unavailable_without_controller(client):
+    d = get(client, "/api/control").json()
+    assert d["available"] is False and d["reason"]
+    r = post(client, {"recording": True})
+    assert r.status_code == 409 and r.json()["available"] is False  # not a 500
+
+
+def test_recording_post_requires_token_and_host():
+    c = ctl_client(FakeController())
+    assert post(c, {"recording": True}, token=None).status_code == 401
+    assert post(c, {"recording": True}, token="wrong").status_code == 401
+    assert post(c, {"recording": True}, headers={"Host": "evil.test"}).status_code == 403
+    assert c.get("/api/recording?token=" + TOKEN, headers=HOST).status_code == 405
+
+
+def test_recording_start_stop_roundtrip():
+    fc = FakeController()
+    c = ctl_client(fc)
+    assert get(c, "/api/control").json() == {"available": True, "recording": False, "downloading": False, "error": None}
+    r = post(c, {"recording": True})
+    assert r.status_code == 200 and r.json()["recording"] is True and fc.starts == 1
+    assert post(c, {"recording": True}).status_code == 200 and fc.starts == 1  # idempotent
+    r = post(c, {"recording": False})
+    assert r.json()["recording"] is False and fc.stops == 1
+
+
+@pytest.mark.parametrize("body", [{}, {"recording": "yes"}, [1], "x"])
+def test_recording_post_bad_body(body):
+    fc = FakeController()
+    assert post(ctl_client(fc), body).status_code == 400
+    assert fc.starts == 0 and fc.stops == 0
+
+
+def test_recording_start_failure_reports_error():
+    c = ctl_client(FakeController(fail_start="no audio device"))
+    r = post(c, {"recording": True})
+    assert r.status_code == 500
+    assert r.json()["error"] == "no audio device" and r.json()["recording"] is False
+
+
+def test_index_has_record_button(client):
+    assert 'id="rec-btn"' in get(client, "/").text

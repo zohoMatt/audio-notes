@@ -49,7 +49,8 @@ def register(app: typer.Typer) -> None:
         from audio_notes.web.server import PanelServer
 
         cfg = Config.from_env()
-        panel = PanelServer(StoreReader(), cfg.web_port)
+        recorder = Recorder(cfg)
+        panel = PanelServer(StoreReader(), cfg.web_port, controller=recorder)
         try:
             panel.start()
         except RuntimeError as e:
@@ -59,7 +60,6 @@ def register(app: typer.Typer) -> None:
                 err=True,
             )
             raise typer.Exit(1)
-        recorder = Recorder(cfg)
         try:
             ran = TrayApp(recorder, panel.url).run()
         finally:

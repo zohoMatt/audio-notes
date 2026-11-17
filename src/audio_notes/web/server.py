@@ -1,9 +1,11 @@
-"""Read-only local web panel (Starlette) and the background server that hosts it.
+"""Local web panel (Starlette) and the background server that hosts it.
 
 Security (REQUIREMENTS F31): loopback bind only, Host header allow-list, no CORS,
 a random per-run token on every route, and `Cache-Control: no-store` on everything.
-Data comes only through a `TranscriptReader`; this module must not import the
-capture, asr or processing layers.
+Transcript data comes only through a `TranscriptReader`; this module must not import the
+capture, asr or processing layers. The one write path, start/stop recording, goes through an
+optional duck-typed controller (the same `RecorderController` the tray uses) and is reported
+as unavailable when the panel runs without one.
 """
 
 from __future__ import annotations
@@ -16,7 +18,7 @@ import threading
 import time
 from dataclasses import asdict
 from importlib import resources
-from typing import AsyncIterator
+from typing import AsyncIterator, Protocol
 from urllib.parse import parse_qs
 
 import uvicorn
@@ -34,6 +36,19 @@ SSE_POLL_INTERVAL_S = 0.4
 SSE_KEEPALIVE_S = 15.0
 
 _STATIC_TYPES = {"app.js": "text/javascript; charset=utf-8", "style.css": "text/css; charset=utf-8"}
+
+
+class RecordingControl(Protocol):
+    """The subset of `tray.controller.RecorderController` the panel needs."""
+
+    def start(self) -> None: ...
+    def stop(self) -> None: ...
+    def is_recording(self) -> bool: ...
+    def last_error(self) -> str | None: ...
+    def is_downloading_model(self) -> bool: ...
+
+
+NO_CONTROLLER = "This panel is not attached to a recorder (start it with `audio-notes tray`)."
 
 
 def new_token() -> str:
@@ -107,6 +122,7 @@ def create_app(
     port: int | None = None,
     sse_poll_interval: float = SSE_POLL_INTERVAL_S,
     sse_max_seconds: float | None = None,
+    controller: RecordingControl | None = None,
 ) -> Starlette:
     """Build the panel app. `port` pins the accepted Host header port (None = any port, tests).
     `sse_max_seconds` ends each event stream after that long (tests only)."""
@@ -124,6 +140,41 @@ def create_app(
     async def api_status(request: Request) -> Response:
         st = await asyncio.to_thread(reader.read_status)
         return JSONResponse(asdict(st))
+
+    def control_state() -> dict:
+        if controller is None:
+            return {"available": False, "reason": NO_CONTROLLER}
+        return {
+            "available": True,
+            "recording": controller.is_recording(),
+            "downloading": controller.is_downloading_model(),
+            "error": controller.last_error(),
+        }
+
+    async def api_control(request: Request) -> Response:
+        return JSONResponse(await asyncio.to_thread(control_state))
+
+    async def api_recording(request: Request) -> Response:
+        """POST {"recording": true|false}: idempotent start/stop through the shared controller."""
+        if controller is None:
+            return JSONResponse({"available": False, "reason": NO_CONTROLLER, "error": NO_CONTROLLER}, status_code=409)
+        try:
+            want = (await request.json())["recording"]
+        except (ValueError, KeyError, TypeError):
+            return PlainTextResponse('expected JSON {"recording": true|false}', status_code=400)
+        if not isinstance(want, bool):
+            return PlainTextResponse("'recording' must be a boolean", status_code=400)
+        try:
+            if want:
+                if not await asyncio.to_thread(controller.is_recording):
+                    await asyncio.to_thread(controller.start)  # may block on model load
+            else:
+                await asyncio.to_thread(controller.stop)
+        except Exception as e:
+            state = await asyncio.to_thread(control_state)
+            state["error"] = controller.last_error() or str(e) or type(e).__name__
+            return JSONResponse(state, status_code=500)
+        return JSONResponse(await asyncio.to_thread(control_state))
 
     async def api_sessions(request: Request) -> Response:
         infos = await asyncio.to_thread(reader.list_sessions)
@@ -196,6 +247,8 @@ def create_app(
             Route("/", index),
             Route("/static/{name}", static),
             Route("/api/status", api_status),
+            Route("/api/control", api_control),
+            Route("/api/recording", api_recording, methods=["POST"]),
             Route("/api/sessions", api_sessions),
             Route("/api/segments", api_segments),
             Route("/api/stream", api_stream),
@@ -208,10 +261,16 @@ def create_app(
 class PanelServer:
     """Runs the panel with uvicorn in a background thread, bound to 127.0.0.1 only."""
 
-    def __init__(self, reader: TranscriptReader, port: int, token: str | None = None) -> None:
+    def __init__(
+        self,
+        reader: TranscriptReader,
+        port: int,
+        token: str | None = None,
+        controller: RecordingControl | None = None,
+    ) -> None:
         self.port = port
         self.token = token or new_token()
-        self._app = create_app(reader, self.token, port=port)
+        self._app = create_app(reader, self.token, port=port, controller=controller)
         self._server: uvicorn.Server | None = None
         self._thread: threading.Thread | None = None
         self._error: BaseException | None = None
