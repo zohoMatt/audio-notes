@@ -116,7 +116,7 @@ audio-notes/
 │       │   ├── base.py         # AudioSource 抽象接口
 │       │   ├── win_wasapi.py   # MVP：loopback + 麦克风；看门狗发现设备丢失/默认设备切换
 │       │   ├── win_endpoints.py # 用 Core Audio 查当前默认设备 id（PortAudio 不会刷新设备表）
-│       │   └── mac_sck.py      # 第二阶段
+│       │   └── mac_tap.py      # macOS：管理 Swift 助手子进程（tap = 系统音频，mic = 麦克风），见 docs/MACOS.md
 │       │
 │       ├── processing/         # 音频 → 语音段
 │       │   ├── resample.py
@@ -134,8 +134,9 @@ audio-notes/
 │       │   ├── reader.py       # CLI / MCP / Web：按字节偏移增量读取、搜索、列会话
 │       │   └── follow.py       # 跟随最新会话（切换新会话时不漏行）+ 带会话 id 的 cursor
 │       │
-│       ├── tray/               # 托盘图标
-│       │   ├── app.py          # pystray 主循环、菜单
+│       ├── tray/               # 托盘图标 / mac 菜单栏
+│       │   ├── app.py          # TrayApp：动作与状态（与平台无关）
+│       │   ├── backend.py      # TrayBackend 接口；pystray_backend.py（Windows）、mac_statusbar.py + mac_menu.py（macOS）
 │       │   ├── icons.py        # 应用图标 + 空闲 / 录制中 / 出错 / 下载中角标（installer/make_icon.py 生成 .ico）
 │       │   └── first_run.py    # 首次法律提示
 │       │
@@ -213,7 +214,7 @@ audio-notes setup claude         输出 / 写入（--write）Claude 的 MCP 配�
 | 数据目录 | 打包版：程序目录旁的 `data`；pip/uv：`%APPDATA%\audio-notes\` | 转写属于用户数据，不混入代码仓库；打包版放程序旁，托盘、CLI、MCP 同目录自然一致，不需要用户设置环境变量 | 微软商店版应用（如 Claude 桌面端）对 AppData 有私有重定向，会让子进程看到不同的 `%APPDATA%`，所以打包版不用它 |
 | 安装包（M6） | PyInstaller onedir + Inno Setup | 用户无需 Python；onedir 避免 onefile 每次解压拖慢 MCP 启动 | 未签名，SmartScreen 提示 |
 | CI/CD | GitHub Actions + PyPI Trusted Publishing | 无需存 token；标签触发；PyPI 发布手动批准 | 版本号由 hatch-vcs 从标签生成 |
-| macOS（后续） | ScreenCaptureKit | 采集层抽象接口，其余模块不变 | 需屏幕录制权限 |
+| macOS | Core Audio Process Tap（Swift 助手 `macos/capture`）+ PyObjC NSStatusItem | 采集层抽象接口，其余模块不变 | 14.2+；只需“仅系统音频录制”权限；见 docs/MACOS.md |
 
 ## 7. 数据格式
 

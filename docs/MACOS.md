@@ -1,6 +1,6 @@
 # macOS 版：打包与表现设计
 
-> 状态：设计草案，尚未实现。标 **[待验证]** 的是凭记忆写的平台细节，实现前先在真机上确认。
+> 状态：M-mac-1（采集）和 M-mac-2（菜单栏）已写好代码，**尚未在真机上运行过**，见第 10 节的实现说明和真机验证清单。打包（M-mac-3/4）未开始。标 **[待验证]** 的是凭记忆写的平台细节，实现前先在真机上确认。
 > 目标：不上 App Store，从 GitHub Releases 下载 DMG，拖进"应用程序"即可用；右上角菜单栏图标对应 Windows 托盘。
 
 ## 1. 结论一览
@@ -221,3 +221,79 @@ flowchart LR
 - 从 DMG 直接运行时的"移到应用程序"提示；移动后 Connect to Claude 写入的路径。
 - Claude Desktop 启动 MCP 后能读到转写；更新到新版本后权限是否保留（签名版）。
 - 合盖、睡眠唤醒后录制状态。
+
+## 10. 实现说明与真机验证清单（M-mac-1 / M-mac-2）
+
+> 代码是在 Windows 上写的，**Swift 从未编译过，mac 代码从未运行过**。Windows 上能验证的只有：Python 侧用假助手进程跑的单元测试（帧格式、退出码、停止/重开、Recorder 设备切换恢复）、菜单逻辑（不依赖 AppKit）、图标、路径和 CLI 分支。CI 的 `test-macos` 作业（macos-14）会第一次真正编译 Swift。
+
+### 10.1 当前的分发方式
+
+- 没有 Developer ID，所以**不做 .app**：用 `uv tool install` 安装，在终端里运行 `audio-notes tray`（或 `audio-notes record`）。
+- 麦克风和系统音频权限因此**算在启动它的终端 app 头上**（弹窗和"系统设置 → 隐私与安全性"里显示 Terminal / iTerm 的名字），也不经过 Gatekeeper。换一个终端 app 要重新授权。
+- 不做开机启动（两个平台都没有）。
+- 安装来源：
+  - 从源码：`uv tool install git+https://github.com/zohoMatt/audio-notes`，或在 checkout 里 `uv tool install .`。本机编译 Swift 助手，需要 Xcode 或 Command Line Tools（`xcode-select --install`）。
+  - **PyPI 目前不行**：release 只发布纯 Python wheel（在 ubuntu 上构建，不含助手）；mac 上装到它会在开始录制时报"capture helper is not installed"。要走 PyPI，需要在 `release.yml` 加一个 macos-14 作业构建 `py3-none-macosx_14_0_arm64` wheel 并一起发布（pip/uv 在 mac 上会优先选它）。本分支没有改 release.yml。
+
+### 10.2 代码结构
+
+| 位置 | 内容 |
+|---|---|
+| `macos/capture/`（SwiftPM） | 助手 `audio-notes-capture`，模式：`tap`（Process Tap + 私有聚合设备）、`mic`（AVAudioEngine）、`list`（设备 JSON）、`permissions [--request]`（权限 JSON，可先弹系统授权） |
+| `macos/capture/Sources/AudioNotesCapture/Protocol.swift` | 帧格式和退出码的权威定义；Python 侧 `capture/mac_tap.py` 与之对应 |
+| `hatch_build.py` | 构建钩子：仅在 macOS 上 `swift build -c release`，把助手放进 wheel 的 `audio_notes/capture/bin/`，wheel 标记为 `macosx_14_0_<arch>`；可编辑安装（`uv sync`）只编译不复制，运行时去 `macos/capture/.build/release/` 找。`AUDIO_NOTES_SKIP_HELPER_BUILD=1` 跳过 |
+| `capture/mac_tap.py` | `TapSource`（them）/ `MicSource`（me）：每个源一个助手子进程；查找顺序 `$AUDIO_NOTES_CAPTURE_HELPER` > wheel 内 > 打包程序旁 > 源码树构建产物 |
+| `recorder.py` | `default_sources()` 按 `sys.platform` 选 mac 或 Windows 实现 |
+| `tray/backend.py` | `TrayBackend` 接口；`pystray_backend.py`（Windows，菜单与之前完全相同）、`mac_statusbar.py`（NSStatusItem） |
+| `tray/mac_menu.py` | 第 2.2 节菜单的纯数据模型（可在 Windows 上测试） |
+| `tray/icons.py` | `menubar_icon(state, scale, dark)`：18 pt 单色模板图；录制中为非模板图（红点），铅笔按菜单栏深浅色画黑或白 |
+| `paths.py` | mac：数据 `~/Library/Application Support/Audio Notes`，日志 `~/Library/Logs/Audio Notes/audio-notes.log` |
+
+帧格式：32 字节小端头（`magic` "ANCR"=就绪 / "ANCF"=音频，`sample_rate`，`count`，`flags`，`host_ns`，`sent_ns`）+ float32 单声道样本。时间戳：Python 以收到帧的 `time.monotonic()` 为准，减去助手自己测得的 `sent_ns - host_ns`（采集到写出的延迟），两个进程不需要共享时钟。
+
+退出码：0 正常（stdin EOF / SIGTERM），10 默认设备变了，11 设备没了，12 权限被拒，13 系统低于 14.2，14 没有设备。启动后的 10/11/其他 → `on_lost`，沿用 Recorder 的"全部停掉再重开、失败每 3 秒重试"；启动前的 12 → `CapturePermissionError`，错误文本含 "System Audio Recording permission"，菜单据此显示"Allow System Audio Recording…"。
+
+### 10.3 与前面设计的差异
+
+- **权限查询放在 Swift 助手里**（`permissions` 模式；麦克风用 AVCaptureDevice，系统音频用私有 TCC SPI `TCCAccessPreflight/TCCAccessRequest` + `kTCCServiceAudioCapture`，dlopen 加载，缺符号时返回 unknown）。所以 Python 只依赖 `pyobjc-framework-Cocoa`，不需要 AVFoundation / UserNotifications 的 PyObjC 包。pystray 在 mac 上不再安装。
+- 通知用 `osascript display notification`（2.3 的 UNUserNotificationCenter 需要签名的 bundle）。
+- 首次启动：法律提示（NSAlert）→ 权限说明（NSAlert，说明权限会显示成终端的名字）→ `permissions --request` 依次弹两个系统授权 → 通知"在菜单栏右上角"。2.4 第 1 步（从 DMG 运行的位置检查）不适用，没做。
+- 2.1 的"录制时长显示在图标旁"、2.2 的 SF Symbols 只做了部分（菜单项有 SF Symbol 图标，状态行没有计时）。
+- "Check for Updates…" 弹窗提示 `uv tool upgrade audio-notes`，可选打开 Releases 页。
+- App Nap：会话在采集时持有 `NSActivityUserInitiated`，暂停/停止时释放。
+
+### 10.4 真机验证清单
+
+环境：Apple Silicon，macOS 14.2+（最好 14.x 和 15.x/26 各一台），Xcode CLT，uv。
+
+**A. 构建（首要风险：Swift 从未编译）**
+1. `swift build -c release --package-path macos/capture` 通过。凭记忆写、需要核对的 API：`CATapDescription(stereoGlobalTapButExcludeProcesses:)`、`muteBehavior`/`isPrivate`、`kAudioAggregateDevice*Key` / `kAudioSubTap*Key`、`kAudioTapPropertyFormat`、`AudioDeviceCreateIOProcIDWithBlock` 的闭包签名、TCC SPI 的 `@convention(c)` 类型。
+2. checkout 里 `uv sync && uv run pytest` 全绿（可编辑安装会触发 hatch 钩子编译助手）。
+3. `uv build --wheel`：文件名带 `macosx_14_0_arm64`，含 `audio_notes/capture/bin/audio-notes-capture`；`uv tool install dist/*.whl` 后该文件有可执行位。
+4. `audio-notes devices` 列出输出/输入设备和两项权限状态。
+
+**B. 采集（`audio-notes record`）**
+5. 首次 `audio-notes record --no-mic` 并播放视频：出现系统音频授权弹窗，**显示的是终端 app 的名字**；允许后 `them` 有转写。
+6. `audio-notes record`（带麦克风）：出现麦克风授权弹窗；`me` 有转写；同时说话和外放，两路时间戳对得上（差 < 0.5 s）。
+7. **拒绝系统音频**（系统设置里关掉终端的"仅系统音频录制"）：`devices` 显示 `system audio recording denied`；`record` 报 "System Audio Recording permission is off…"，而不是默默录静音。若实际是静音：说明 `TCCAccessPreflight` 的返回值约定（0=允许、1=拒绝）不对或该 SPI 不可用，记录 `permissions` 的实际输出。
+8. 拒绝麦克风：录制照常（只有 them），日志有警告；菜单出现 "Allow Microphone Access…"。
+9. 设备切换（录制中）：插拔有线耳机、连/断 AirPods、在控制中心切换输出、切换默认输入。日志应出现 "the default output/input device changed" → 约 1–2 秒内重新绑定、转写继续、同一个会话文件。`pgrep -fl audio-notes-capture` 每路只有一个进程。确认 `AVAudioEngineConfigurationChange` 不会在启动时误触发导致反复重启。
+10. 44.1 kHz 设备、蓝牙耳机麦克风（HFP 16/24 kHz）都能转写。
+11. 停止、暂停/继续、Ctrl+C、`kill -9` 主进程后：没有残留助手进程（助手在 stdin EOF 时退出）；"音频 MIDI 设置"里看不到残留的聚合设备。
+12. 合盖睡眠再唤醒后的录制状态；助手 CPU 占用（Activity Monitor）。
+
+**C. 菜单栏（`audio-notes tray`）**
+13. 没有 Dock 图标；首次依次出现：法律提示 → 权限说明 → 两个系统弹窗 → "在菜单栏"通知。NSAlert 带应用图标并出现在最前面。
+14. 图标在浅色、深色、壁纸着色的菜单栏下都清晰（模板图被正确着色）；录制中红点；录制时切换深浅色，铅笔约 0.5 秒内变色；菜单展开时（高亮态）录制图标仍可辨认。
+15. 菜单与 2.2 一致（没有 Open at Login）；状态行灰色；录制/暂停时 "Include Microphone" 禁用；Quit 显示 ⌘Q。
+16. 每一项都能用：开始/暂停/继续/停止；Open Panel… 打开浏览器；Show Transcripts in Finder 打开 `~/Library/Application Support/Audio Notes/sessions`；Connect to Claude… 的确认框（从后台线程切到主线程弹出）能写入配置，Claude Desktop 运行中时提示先退出（`pgrep -x Claude`）；About；Check for Updates…。
+17. "Allow System Audio Recording…" 打开的是"屏幕与系统音频录制"页（URL 锚点 `Privacy_ScreenCapture` 待验证，不对就试 `Privacy_AudioCapture`）；"Allow Microphone Access…" 打开麦克风页。授权后不重启 Audio Notes，下次重试即可录到声音。
+18. App Nap：录制时 `pmset -g assertions` 能看到 "Audio Notes is recording and transcribing"，暂停/停止后消失。
+19. 出错时的 osascript 通知能弹出（显示为"脚本编辑器"）。
+20. 菜单 Quit、终端 Ctrl+C 都能干净退出：终端返回提示符，面板端口释放，`audio-notes status` 显示离线。
+
+**D. CLI / Claude**
+21. `audio-notes setup claude --write` 写入的是 `~/.local/bin/audio-notes` 解析后的绝对路径；Claude Desktop 启动 MCP 后能读到转写。
+22. `audio-notes clean --purge-data` 删除 Application Support 和 Logs 下的目录；`--uninstall` 提示 `uv tool uninstall audio-notes`。
+
+**已知风险**：IO 回调里分配内存并经队列写 stdout（若有爆音/丢帧再换环形缓冲）；TCC SPI 未来可能失效（失效时退化为"不知道"，静音无法和无声区分）；从终端运行时 TCC 归属是否总是终端（而不是 python 或助手）需要确认。
