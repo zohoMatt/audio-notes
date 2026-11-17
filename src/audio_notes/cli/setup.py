@@ -16,11 +16,31 @@ SERVER_NAME = "audio-notes"
 CONFIG_ENV = "AUDIO_NOTES_CLAUDE_CONFIG"  # overrides the Claude Desktop config path (tests)
 
 
+def _store_claude_config_dir() -> Path | None:
+    """Microsoft Store builds of Claude Desktop redirect %APPDATA% into their package folder
+    (%LOCALAPPDATA%\\Packages\\Claude_*\\LocalCache\\Roaming\\Claude) and ignore the real %APPDATA%."""
+    local = os.environ.get("LOCALAPPDATA")
+    if not local:
+        return None
+    # Newer builds keep user data in %LOCALAPPDATA%\Claude-Data\claude_<package id>\.
+    for d in sorted(Path(local, "Claude-Data").glob("claude_*")):
+        if (d / "claude_desktop_config.json").is_file():
+            return d
+    for pkg in sorted(Path(local, "Packages").glob("Claude_*")):
+        d = pkg / "LocalCache" / "Roaming" / "Claude"
+        if d.is_dir():
+            return d
+    return None
+
+
 def claude_desktop_config_path() -> Path:
     override = os.environ.get(CONFIG_ENV)
     if override:
         return Path(override)
     if sys.platform == "win32":
+        store = _store_claude_config_dir()
+        if store is not None:
+            return store / "claude_desktop_config.json"
         base = Path(os.environ.get("APPDATA") or Path.home() / "AppData" / "Roaming")
         return base / "Claude" / "claude_desktop_config.json"
     if sys.platform == "darwin":
@@ -34,6 +54,21 @@ CLI_EXE_NAME = "audio-notes.exe"  # console build; the tray exe (windowed) has n
 
 class ClaudeNotInstalled(Exception):
     """Claude Desktop's config directory does not exist, so Claude Desktop is not installed."""
+
+
+def claude_desktop_running() -> bool:
+    if sys.platform != "win32":
+        return False
+    import subprocess
+
+    try:
+        out = subprocess.run(
+            ["tasklist", "/FI", "IMAGENAME eq claude.exe", "/NH"],
+            capture_output=True, text=True, timeout=10,
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return "claude.exe" in out.lower()
 
 
 def claude_desktop_installed(config_path: Path) -> bool:
@@ -135,6 +170,15 @@ def register(app: typer.Typer) -> None:
             raise typer.Exit(1)
         if backup:
             typer.echo(f"Backup: {backup}")
-        typer.echo(f"Updated {path}. Restart Claude Desktop to load it.")
+        typer.echo(f"Updated {path}.")
+        if claude_desktop_running():
+            typer.echo(
+                "WARNING: Claude Desktop is running and rewrites this file when it exits, which can "
+                "erase the change. Quit it completely (also from the tray), run this command again, "
+                "then start Claude Desktop.",
+                err=True,
+            )
+        else:
+            typer.echo("Start Claude Desktop to load it.")
 
     app.add_typer(setup_app, name="setup")

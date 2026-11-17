@@ -59,7 +59,10 @@ audio-notes setup claude --write --yes   # same, without asking (exit code 3: Cl
 ```
 
 The configuration uses the absolute path to the `audio-notes` executable, so it works even when
-Claude's child processes have an incomplete PATH. Restart Claude Desktop afterwards.
+Claude's child processes have an incomplete PATH. **Quit Claude Desktop completely (also from the
+tray) before running `--write`, then start it again**: it rewrites its config file on exit and would
+erase the entry. The Microsoft Store build keeps its config under
+`%LOCALAPPDATA%\Claude-Data\claude_<id>\`; the command finds it automatically.
 
 ## Usage
 
