@@ -57,11 +57,20 @@ class ClaudeNotInstalled(Exception):
     """Claude Desktop's config directory does not exist, so Claude Desktop is not installed."""
 
 
+MAC_CLAUDE_PROCESS = "Claude"  # Claude Desktop's main process (Claude.app/Contents/MacOS/Claude)
+
+
 def claude_desktop_running() -> bool:
-    if sys.platform != "win32":
-        return False
     import subprocess
 
+    if sys.platform == "darwin":
+        # Exact, case-sensitive match: the Claude Code CLI runs as "claude" / "node", not "Claude".
+        try:
+            return subprocess.run(["pgrep", "-x", MAC_CLAUDE_PROCESS], capture_output=True, timeout=10).returncode == 0
+        except (OSError, subprocess.SubprocessError):
+            return False
+    if sys.platform != "win32":
+        return False
     try:
         out = subprocess.run(
             ["tasklist", "/FI", "IMAGENAME eq claude.exe", "/NH"],

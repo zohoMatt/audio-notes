@@ -31,7 +31,7 @@ def _rounded_square(n: int) -> Image.Image:
     return img
 
 
-def _pencil(n: int) -> Image.Image:
+def _pencil(n: int, ink: tuple = _WHITE, eraser_ink: tuple = _ERASER) -> Image.Image:
     """White wave bars forming the pencil body, a white tip and a pink eraser; tip at lower left."""
     cx, cy, length, w = n * 0.52, n * 0.48, n * 0.88, n * 0.27
     layer = Image.new("RGBA", (n, n), (0, 0, 0, 0))
@@ -39,15 +39,15 @@ def _pencil(n: int) -> Image.Image:
     x0, x1 = cx - length / 2, cx + length / 2
     y0, y1 = cy - w / 2, cy + w / 2
     tip, eraser = w, w * 0.45
-    d.polygon([(x0, cy), (x0 + tip, y0), (x0 + tip, y1)], fill=_WHITE)
+    d.polygon([(x0, cy), (x0 + tip, y0), (x0 + tip, y1)], fill=ink)
     bars = (0.55, 0.90, 0.62, 1.0, 0.72, 0.50)
     bx0, bx1 = x0 + tip + w * 0.18, x1 - eraser - w * 0.18
     step = (bx1 - bx0) / len(bars)
     bw = step * 0.62
     for i, h in enumerate(bars):
         x = bx0 + i * step + (step - bw) / 2
-        d.rounded_rectangle((x, cy - w * h / 2, x + bw, cy + w * h / 2), radius=bw / 2, fill=_WHITE)
-    d.rounded_rectangle((x1 - eraser, y0, x1, y1), radius=w * 0.12, fill=_ERASER)
+        d.rounded_rectangle((x, cy - w * h / 2, x + bw, cy + w * h / 2), radius=bw / 2, fill=ink)
+    d.rounded_rectangle((x1 - eraser, y0, x1, y1), radius=w * 0.12, fill=eraser_ink)
     return layer.rotate(45, resample=Image.BICUBIC, center=(cx, cy))
 
 
@@ -96,3 +96,51 @@ def app_icon(size: int = 256) -> Image.Image:
 def make_icon(state: TrayState, size: int = 64) -> Image.Image:
     """Tray icon for `state`; idle is the plain app icon."""
     return _render(size, state)
+
+
+# ---- macOS menu bar ------------------------------------------------------------------------------
+MENUBAR_PT = 18  # menu bar icons are 18x18 pt; rendered at 1x and 2x
+_BLACK = (0, 0, 0, 255)
+_CLEAR = (0, 0, 0, 0)
+_RECORD_RED = (255, 59, 48, 255)  # NSColor.systemRed (light appearance)
+
+
+def _menubar_badge(img: Image.Image, n: int, state: TrayState, ink: tuple) -> None:
+    """Bottom-right badge: a clear ring separates it from the pencil. Recording is a solid red
+    dot; the other states are an ink disc with the glyph knocked out (template friendly)."""
+    r = n * 0.25
+    cx = cy = n - r - n * 0.01
+    d = ImageDraw.Draw(img)  # ImageDraw writes RGBA values as-is, so _CLEAR erases
+    pad = r + n * 0.08
+    d.ellipse((cx - pad, cy - pad, cx + pad, cy + pad), fill=_CLEAR)
+    if state is TrayState.RECORDING:
+        d.ellipse((cx - r, cy - r, cx + r, cy + r), fill=_RECORD_RED)
+        return
+    d.ellipse((cx - r, cy - r, cx + r, cy + r), fill=ink)
+    t, u = r * 0.58, r * 0.17
+    if state is TrayState.PAUSED:
+        for x in (cx - t * 0.45, cx + t * 0.45):
+            d.rectangle((x - u, cy - t * 0.8, x + u, cy + t * 0.8), fill=_CLEAR)
+    elif state is TrayState.ERROR:
+        d.rectangle((cx - u, cy - t, cx + u, cy + t * 0.25), fill=_CLEAR)
+        d.ellipse((cx - u, cy + t * 0.55, cx + u, cy + t * 0.55 + 2 * u), fill=_CLEAR)
+    else:  # downloading
+        d.rectangle((cx - u, cy - t, cx + u, cy + t * 0.1), fill=_CLEAR)
+        d.polygon([(cx - t * 0.8, cy), (cx + t * 0.8, cy), (cx, cy + t * 0.9)], fill=_CLEAR)
+
+
+def menubar_icon(state: TrayState, scale: int = 1, dark: bool = False) -> tuple[Image.Image, bool]:
+    """macOS menu bar icon for `state` at `scale` (1 = 18 px, 2 = 36 px) -> (image, is_template).
+
+    Template images (black + alpha) are tinted by macOS for light, dark and tinted menu bars. The
+    recording icon is not a template, so its red dot stays red; its pencil is drawn black or white
+    to match the menu bar (`dark`), which the caller reads from the status item's appearance."""
+    size = MENUBAR_PT * scale
+    n = size * _SUPERSAMPLE
+    template = state is not TrayState.RECORDING
+    ink = _WHITE if (dark and not template) else _BLACK
+    img = Image.new("RGBA", (n, n), _CLEAR)
+    img.alpha_composite(_pencil(n, ink, ink))
+    if state is not TrayState.IDLE:
+        _menubar_badge(img, n, state, ink)
+    return img.resize((size, size), Image.LANCZOS), template
