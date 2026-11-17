@@ -186,7 +186,7 @@ Windows 上不签名只是 SmartScreen 提示一下；mac 上不签名有三个�
 | `cli/clean.py`、`cli/devices.py` | 补 darwin 分支 |
 | `pyproject.toml` | darwin 依赖：`pyobjc-framework-Cocoa`、`pyobjc-framework-AVFoundation`、`pyobjc-framework-UserNotifications`；classifiers 加 macOS |
 | `installer/` | `audio-notes-mac.spec`、`entitlements.plist`、`dmg_settings.py`、`build_mac.sh` |
-| `.github/workflows/` | ci 加 `macos-14` 跑 pytest；release 加 `installer-mac` 作业（见下） |
+| `.github/workflows/` | ci 加 `macos-15` 跑 pytest；release 加 `installer-mac` 作业（见下） |
 
 ## 7. CI 发布流程
 
@@ -194,7 +194,7 @@ Windows 上不签名只是 SmartScreen 提示一下；mac 上不签名有三个�
 flowchart LR
     T["push tag v*"] --> TEST["test<br/>windows + macos"]
     TEST --> WIN["Windows 安装包<br/>(现有)"]
-    TEST --> MAC["macos-14 (arm64)"]
+    TEST --> MAC["macos-15 (arm64)"]
     MAC --> B1["swift build 助手"]
     B1 --> B2["PyInstaller BUNDLE"]
     B2 --> B3["codesign<br/>证书来自 secrets"]
@@ -224,7 +224,7 @@ flowchart LR
 
 ## 10. 实现说明与真机验证清单（M-mac-1 / M-mac-2）
 
-> 代码是在 Windows 上写的，**Swift 从未编译过，mac 代码从未运行过**。Windows 上能验证的只有：Python 侧用假助手进程跑的单元测试（帧格式、退出码、停止/重开、Recorder 设备切换恢复）、菜单逻辑（不依赖 AppKit）、图标、路径和 CLI 分支。CI 的 `test-macos` 作业（macos-14）会第一次真正编译 Swift。
+> 代码是在 Windows 上写的，**Swift 从未编译过，mac 代码从未运行过**。Windows 上能验证的只有：Python 侧用假助手进程跑的单元测试（帧格式、退出码、停止/重开、Recorder 设备切换恢复）、菜单逻辑（不依赖 AppKit）、图标、路径和 CLI 分支。CI 的 `test-macos` 作业（macos-15）会第一次真正编译 Swift。
 
 ### 10.1 当前的分发方式
 
@@ -233,7 +233,7 @@ flowchart LR
 - 不做开机启动（两个平台都没有）。
 - 安装来源：
   - 从源码：`uv tool install git+https://github.com/zohoMatt/audio-notes`，或在 checkout 里 `uv tool install .`。本机编译 Swift 助手，需要 Xcode 或 Command Line Tools（`xcode-select --install`）。
-  - **PyPI 目前不行**：release 只发布纯 Python wheel（在 ubuntu 上构建，不含助手）；mac 上装到它会在开始录制时报"capture helper is not installed"。要走 PyPI，需要在 `release.yml` 加一个 macos-14 作业构建 `py3-none-macosx_14_0_arm64` wheel 并一起发布（pip/uv 在 mac 上会优先选它）。本分支没有改 release.yml。
+  - **PyPI 目前不行**：release 只发布纯 Python wheel（在 ubuntu 上构建，不含助手）；mac 上装到它会在开始录制时报"capture helper is not installed"。要走 PyPI，需要在 `release.yml` 加一个 macos-15 作业构建 `py3-none-macosx_14_0_arm64` wheel 并一起发布（pip/uv 在 mac 上会优先选它）。本分支没有改 release.yml。
 
 ### 10.2 代码结构
 

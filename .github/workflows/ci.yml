@@ -35,7 +35,7 @@ jobs:
     # Apple Silicon runner. Builds the Swift capture helper (process taps need the macOS 14.2+ SDK,
     # which the runner's default Xcode has), then runs the same test suite. The helper cannot
     # record here (no audio permissions on CI); `list` / `permissions` are smoke-tested only.
-    runs-on: macos-14
+    runs-on: macos-15 # macos-14 images are no longer offered
     steps:
       - uses: actions/checkout@v4.2.2
         with:
