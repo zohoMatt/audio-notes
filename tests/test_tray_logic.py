@@ -154,7 +154,7 @@ def test_run_declined_never_records_or_shows_icon():
     ctrl = FakeController()
     app = make_app(ctrl, first_run_dialog=lambda t, m: False)
     assert app.run() is False
-    assert ctrl.recording is False and app._icon is None
+    assert ctrl.recording is False and app._backend is None
 
 
 def test_toggle_actions():

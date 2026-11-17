@@ -30,3 +30,38 @@ jobs:
           key: hf-models-${{ runner.os }}-v1
       - run: uv sync --locked
       - run: uv run pytest
+
+  test-macos:
+    # Apple Silicon runner. Builds the Swift capture helper (process taps need the macOS 14.2+ SDK,
+    # which the runner's default Xcode has), then runs the same test suite. The helper cannot
+    # record here (no audio permissions on CI); `list` / `permissions` are smoke-tested only.
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4.2.2
+        with:
+          fetch-depth: 0 # hatch-vcs reads tags
+      - name: Build the capture helper
+        run: swift build -c release --package-path macos/capture
+      - name: Smoke-test the capture helper
+        run: |
+          helper="$(swift build -c release --package-path macos/capture --show-bin-path)/audio-notes-capture"
+          "$helper" list
+          "$helper" permissions
+          set +e; "$helper" bogus; code=$?; set -e
+          test "$code" -eq 2 # usage error
+      - uses: astral-sh/setup-uv@v6.3.1
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - name: Cache Hugging Face models
+        uses: actions/cache@v4.2.3
+        with:
+          path: ~/.cache/huggingface
+          key: hf-models-${{ runner.os }}-v1
+      - run: uv sync --locked # editable install: hatch_build.py builds the helper again (incremental)
+      - run: uv run pytest
+      - name: Build the macOS wheel (helper inside, macOS-tagged)
+        run: |
+          uv build --wheel -o dist
+          ls dist
+          unzip -l dist/*.whl | grep 'audio_notes/capture/bin/audio-notes-capture'

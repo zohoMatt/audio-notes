@@ -14,12 +14,12 @@ import typer
 def _setup_logging(to_file: bool = False) -> None:
     handlers: list[logging.Handler] = [logging.StreamHandler()]
     if to_file:
-        # The packaged tray has no console, so keep a log file next to the data.
+        # The packaged tray has no console, so keep a log file next to the data (macOS: ~/Library/Logs).
         from audio_notes import paths
 
         try:
-            paths.data_dir().mkdir(parents=True, exist_ok=True)
-            handlers.append(logging.FileHandler(paths.data_dir() / "audio-notes.log", encoding="utf-8"))
+            paths.log_dir().mkdir(parents=True, exist_ok=True)
+            handlers.append(logging.FileHandler(paths.log_dir() / "audio-notes.log", encoding="utf-8"))
         except OSError:
             pass
     logging.basicConfig(

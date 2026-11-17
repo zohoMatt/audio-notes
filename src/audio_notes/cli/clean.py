@@ -4,8 +4,9 @@ Meant for repeated local testing. Removes, after one confirmation:
 - the Audio Notes entry from every Claude Desktop config found (Store and classic installs),
 - the `claude_desktop_config.json.bak-*` backups our connect step made,
 - Claude Code registrations (user scope, every project's local scope, project `.mcp.json` files),
-- with --uninstall: the installed app, by running its Inno Setup uninstaller silently,
-- with --purge-data: the transcripts folders as well.
+- with --uninstall: the installed app, by running its Inno Setup uninstaller silently (Windows;
+  on macOS the app is a uv tool: `uv tool uninstall audio-notes`),
+- with --purge-data: the transcripts folders as well (and the log folder on macOS).
 """
 
 from __future__ import annotations
@@ -140,6 +141,8 @@ def build_plan(*, keep_backups: bool, uninstall: bool, purge_data: bool,
         from audio_notes import paths
 
         candidates = [paths.data_dir()]
+        if sys.platform == "darwin":
+            candidates.append(paths.log_dir())  # ~/Library/Logs/Audio Notes
         if plan.uninstaller is not None:
             candidates.append(plan.uninstaller.parent / "data")
         appdata = os.environ.get("APPDATA")
@@ -197,7 +200,10 @@ def register(app: typer.Typer) -> None:
         """Remove Audio Notes from Claude Desktop / Claude Code (and optionally uninstall it)."""
         plan = build_plan(keep_backups=keep_backups, uninstall=uninstall, purge_data=purge_data)
         if uninstall and plan.uninstaller is None:
-            typer.echo("No installed Audio Notes found (no uninstaller in the registry).")
+            if sys.platform == "darwin":
+                typer.echo("On macOS Audio Notes is a uv tool; remove it with: uv tool uninstall audio-notes")
+            else:
+                typer.echo("No installed Audio Notes found (no uninstaller in the registry).")
         if plan.empty():
             typer.echo("Nothing to clean.")
             return
@@ -236,8 +242,9 @@ def register(app: typer.Typer) -> None:
 
         if plan.desktop and setup_cli.claude_desktop_running():
             failures += 1
+            where = "Cmd+Q" if sys.platform == "darwin" else "also from the tray"
             typer.echo("SKIP  Claude Desktop configs: Claude Desktop is running and rewrites its config when it "
-                       "exits. Quit it completely (also from the tray) and run this again.", err=True)
+                       f"exits. Quit it completely ({where}) and run this again.", err=True)
         else:
             for cfg, names in plan.desktop:
                 attempt(f"Claude Desktop {cfg}", lambda cfg=cfg, names=names: remove_servers(cfg, names))

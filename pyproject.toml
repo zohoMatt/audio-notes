@@ -5,14 +5,16 @@ build-backend = "hatchling.build"
 [project]
 name = "audio-notes"
 dynamic = ["version"]
-description = "Lightweight tray tool: capture system audio, transcribe locally, expose the transcript to Claude via MCP."
+description = "Lightweight tray / menu bar tool: capture system audio, transcribe locally, expose the transcript to Claude via MCP."
 readme = "docs/pypi.md"  # PyPI page (absolute links only); README.md is the GitHub page
 requires-python = ">=3.10"
-keywords = ["audio", "transcription", "whisper", "mcp", "claude", "windows"]
+keywords = ["audio", "transcription", "whisper", "mcp", "claude", "windows", "macos"]
 classifiers = [
     "Development Status :: 3 - Alpha",
+    "Environment :: MacOS X :: Cocoa",
     "Environment :: Win32 (MS Windows)",
     "Intended Audience :: End Users/Desktop",
+    "Operating System :: MacOS :: MacOS X",
     "Operating System :: Microsoft :: Windows",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
@@ -28,11 +30,15 @@ dependencies = [
     "numpy",
     "faster-whisper>=1.0",
     "soxr",
-    "pystray",
     "Pillow",
     "starlette",
     "uvicorn",
+    # Windows: notification-area icon and WASAPI capture.
+    "pystray; sys_platform != 'darwin'",
     "PyAudioWPatch; sys_platform == 'win32'",
+    # macOS: the menu bar icon (NSStatusItem) is written directly against AppKit; capture runs in
+    # the Swift helper (macos/capture), so no audio framework bindings are needed in Python.
+    "pyobjc-framework-Cocoa>=10; sys_platform == 'darwin'",
 ]
 
 [project.scripts]
@@ -56,15 +62,23 @@ fallback_version = "0.0.0"
 [tool.hatch.build.targets.wheel]
 packages = ["src/audio_notes"]
 
+# On macOS only: compile macos/capture (Swift) into the wheel. A no-op elsewhere. See hatch_build.py.
+[tool.hatch.build.targets.wheel.hooks.custom]
+path = "hatch_build.py"
+
 # The sdist is for building and testing the package, not a copy of the repo: no demos, scripts,
-# installer, CI workflows, lock file or design notes.
+# installer, CI workflows, lock file or design notes. macos/ and hatch_build.py are kept because
+# a macOS wheel built from the sdist compiles the Swift capture helper.
 [tool.hatch.build.targets.sdist]
-only-include = ["src", "tests", "docs/pypi.md", "README.md", "LICENSE", "pyproject.toml"]
+only-include = ["src", "tests", "macos", "hatch_build.py", "docs/pypi.md", "README.md", "LICENSE",
+                "pyproject.toml"]
 
 [tool.uv]
 # The version comes from git tags (hatch-vcs). Without these keys uv never reinstalls the project
 # when only the commit or tag changes, so `--version` (and locally built installers) go stale.
-cache-keys = [{ file = "pyproject.toml" }, { git = { commit = true, tags = true } }]
+# macos/ is listed so a source checkout on a Mac rebuilds the Swift helper when it changes.
+cache-keys = [{ file = "pyproject.toml" }, { file = "hatch_build.py" }, { file = "macos/capture/**/*.swift" },
+              { git = { commit = true, tags = true } }]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

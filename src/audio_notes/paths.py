@@ -2,11 +2,16 @@
 
 Where transcripts live:
 1. `AUDIO_NOTES_DATA_DIR`, when set (tests, advanced use).
-2. Packaged build (PyInstaller): a `data` folder next to the program. Every process of one
+2. macOS (any install): `~/Library/Application Support/Audio Notes`. Never inside an .app bundle,
+   which would break its signature and be lost on update.
+3. Windows packaged build (PyInstaller): a `data` folder next to the program. Every process of one
    install (tray, CLI, MCP server) then agrees on the location without any setup. This also
    avoids the per-app AppData redirection of Microsoft Store apps (such as Claude Desktop),
    which would otherwise give the MCP server a different %APPDATA% than the tray.
-3. Otherwise (pip / uv / source tree): `%APPDATA%\\audio-notes`.
+4. Otherwise (pip / uv / source tree): `%APPDATA%\\audio-notes` (`~/.local/share/audio-notes`
+   where there is no %APPDATA%).
+
+Logs go to the data dir, except on macOS: `~/Library/Logs/Audio Notes` (Console.app finds them).
 """
 
 from __future__ import annotations
@@ -15,6 +20,9 @@ import os
 import sys
 from datetime import datetime
 from pathlib import Path
+
+
+MAC_APP_NAME = "Audio Notes"  # folder name under ~/Library/Application Support and ~/Library/Logs
 
 
 def app_dir() -> Path | None:
@@ -36,11 +44,19 @@ def data_dir() -> Path:
     override = os.environ.get("AUDIO_NOTES_DATA_DIR")
     if override:
         return Path(override)
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / MAC_APP_NAME
     app = app_dir()
     if app is not None and _can_create(app / "data"):
         return app / "data"
     base = os.environ.get("APPDATA") or str(Path.home() / ".local" / "share")
     return Path(base) / "audio-notes"
+
+
+def log_dir() -> Path:
+    if sys.platform == "darwin" and not os.environ.get("AUDIO_NOTES_DATA_DIR"):
+        return Path.home() / "Library" / "Logs" / MAC_APP_NAME
+    return data_dir()
 
 
 def sessions_dir() -> Path:

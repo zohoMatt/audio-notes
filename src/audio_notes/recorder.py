@@ -1,12 +1,13 @@
 """Recorder: glues capture -> processing -> ASR -> store.
 
 Implements `tray.controller.RecorderController`, so the tray and the `record` command drive
-exactly the same code. Heavy imports (faster-whisper, PyAudioWPatch) stay lazy.
+exactly the same code. Heavy imports (faster-whisper, PyAudioWPatch, the macOS helper) stay lazy.
 """
 
 from __future__ import annotations
 
 import logging
+import sys
 import threading
 from typing import Callable, Sequence
 
@@ -23,17 +24,25 @@ log = logging.getLogger(__name__)
 # Builds the audio sources for a session; the argument says whether the microphone is wanted.
 SourceFactory = Callable[[bool], Sequence[AudioSource]]
 
-RECOVER_DELAY_S = 1.0  # after a device change, let Windows settle before re-opening streams
+RECOVER_DELAY_S = 1.0  # after a device change, let the OS settle before re-opening streams
 RETRY_INTERVAL_S = 3.0  # while system audio cannot be re-opened, try again this often
 
 
 def default_sources(mic: bool) -> list[AudioSource]:
-    """System-audio loopback ("them") plus, optionally, the default microphone ("me")."""
-    from audio_notes.capture.win_wasapi import LoopbackSource, MicSource
+    """System audio ("them") plus, optionally, the default microphone ("me"): WASAPI loopback on
+    Windows, a Core Audio process tap (through the Swift helper) on macOS."""
+    if sys.platform == "darwin":
+        from audio_notes.capture.mac_tap import MicSource, TapSource
 
-    sources: list[AudioSource] = [LoopbackSource()]
+        sources: list[AudioSource] = [TapSource()]
+        if mic:
+            sources.append(MicSource())
+        return sources
+    from audio_notes.capture.win_wasapi import LoopbackSource, MicSource as WasapiMicSource
+
+    sources = [LoopbackSource()]
     if mic:
-        sources.append(MicSource())
+        sources.append(WasapiMicSource())
     return sources
 
 

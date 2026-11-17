@@ -1,7 +1,15 @@
 import sys
 from pathlib import Path
 
+import pytest
+
 from audio_notes import paths
+
+
+@pytest.fixture(autouse=True)
+def windows_layout(monkeypatch):
+    """These cases describe the Windows / generic layout; macOS has its own (test_tray_mac.py)."""
+    monkeypatch.setattr(sys, "platform", "win32")
 
 
 def _frozen(monkeypatch, exe: Path):

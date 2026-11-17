@@ -1,4 +1,5 @@
 import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -117,4 +118,5 @@ def test_uninstall_and_purge(env, monkeypatch):
 
 def test_uninstall_not_installed(env):
     r = runner.invoke(app, ["clean", "--uninstall", "--yes"])
-    assert r.exit_code == 0 and "No installed Audio Notes" in r.output and "Nothing to clean" in r.output
+    hint = "uv tool uninstall audio-notes" if sys.platform == "darwin" else "No installed Audio Notes"
+    assert r.exit_code == 0 and hint in r.output and "Nothing to clean" in r.output
