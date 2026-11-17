@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 name = "audio-notes"
 dynamic = ["version"]
 description = "Lightweight tray tool: capture system audio, transcribe locally, expose the transcript to Claude via MCP."
-readme = "README.md"
+readme = "docs/pypi.md"  # PyPI page (absolute links only); README.md is the GitHub page
 requires-python = ">=3.10"
 keywords = ["audio", "transcription", "whisper", "mcp", "claude", "windows"]
 classifiers = [
@@ -55,6 +55,16 @@ fallback_version = "0.0.0"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/audio_notes"]
+
+# The sdist is for building and testing the package, not a copy of the repo: no demos, scripts,
+# installer, CI workflows, lock file or design notes.
+[tool.hatch.build.targets.sdist]
+only-include = ["src", "tests", "docs/pypi.md", "README.md", "LICENSE", "pyproject.toml"]
+
+[tool.uv]
+# The version comes from git tags (hatch-vcs). Without these keys uv never reinstalls the project
+# when only the commit or tag changes, so `--version` (and locally built installers) go stale.
+cache-keys = [{ file = "pyproject.toml" }, { git = { commit = true, tags = true } }]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

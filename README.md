@@ -7,7 +7,7 @@
 ### Your meetings, transcribed on your PC. Ask Claude about them.
 
 **System audio + microphone → local Whisper transcript → Claude, over MCP.**<br>
-Nothing is uploaded. Audio never leaves your machine.
+Audio never leaves your machine. Claude sees only the transcript lines it reads when you ask.
 
 [![Download for Windows](https://img.shields.io/badge/Download-Windows%20installer-312E81?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/zohoMatt/audio-notes/releases/latest)
 [![Quick start](https://img.shields.io/badge/Quick%20start-4%20steps-F472B6?style=for-the-badge)](#quick-start)
@@ -25,7 +25,8 @@ Nothing is uploaded. Audio never leaves your machine.
 A lightweight Windows tray tool that captures **system audio** (what you hear) and your **microphone**,
 transcribes both **locally** with [faster-whisper](https://github.com/SYSTRAN/faster-whisper) on the CPU,
 and lets Claude read the transcript through an [MCP](https://modelcontextprotocol.io) server.
-Nothing is uploaded: audio never leaves your machine. Transcripts are stored in the `data` folder next to
+Audio never leaves your machine, and transcripts stay on disk until you ask Claude about them (see
+[What stays on your PC](#what-stays-on-your-pc)). Transcripts are stored in the `data` folder next to
 the program when you use the installer or the packaged build (so the tray, the command line and the MCP
 server always agree on where they are), and under `%APPDATA%\audio-notes\` when you install with
 pip / uv. Set `AUDIO_NOTES_DATA_DIR` to put them somewhere else.
@@ -125,6 +126,20 @@ Command line:
 | `audio-notes status` | Is the daemon running, current session |
 | `audio-notes mcp` | Run the MCP server over stdio (Claude launches this) |
 | `audio-notes setup claude` | Print or write Claude's MCP config |
+
+## What stays on your PC
+
+- **Audio** is captured and transcribed on your CPU, and is never written to disk or sent anywhere.
+- **Transcripts** are plain files on your disk (see above for where).
+- **The panel** is served on `127.0.0.1` only, so other computers on your network can't open it.
+- **Claude** talks to Audio Notes over stdio: Claude Desktop starts the `audio-notes` program on
+  your PC, with no network port and no server in between. When you ask a question, the transcript
+  lines Claude reads become part of that conversation and are sent to Anthropic like anything else
+  you type to Claude. Nothing is sent until you ask.
+- **The network** is used to download the speech model from Hugging Face on first use. When the
+  model is loaded later, the download library still checks Hugging Face for a newer copy if you
+  are online, and falls back to the cached model if you are not. There is no telemetry and no
+  account.
 
 ## Legal notice: recording other people
 

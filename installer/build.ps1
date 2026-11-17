@@ -36,6 +36,14 @@ if (Test-Path $keep) {
 }
 if ($pyiExit) { throw "PyInstaller failed" }
 
+# The project is installed into build\venv from this checkout, so its dist-info records the
+# checkout path (direct_url.json) and uv's cache keys. Only the version metadata is needed at
+# run time (`--version`); don't ship the build machine's paths.
+Get-ChildItem "$root\dist\audio-notes\_internal\audio_notes-*.dist-info" -Directory | ForEach-Object {
+    Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $_.FullName "direct_url.json"),
+        (Join-Path $_.FullName "uv_cache.json"), (Join-Path $_.FullName "uv_build.json")
+}
+
 $size = (Get-ChildItem "$root\dist\audio-notes" -Recurse | Measure-Object Length -Sum).Sum / 1MB
 Write-Host ("Bundle: dist\audio-notes ({0:N0} MB)" -f $size)
 
