@@ -2,7 +2,7 @@
 
 Everything the workflows can do on their own is in `.github/workflows/`. These are the steps only
 the repository owner can do. The workflows have **not** been run on GitHub yet; expect to fix small
-things on the first tag (try a `v0.0.1rc1`-style tag first; TestPyPI/PyPI versions can never be reused).
+things on the first tag (try a `v0.0.1rc1`-style tag first; PyPI versions can never be reused).
 
 ## Installer only (no PyPI setup needed)
 
@@ -33,11 +33,9 @@ git push origin v0.1.0a1
      - Owner / repository: your GitHub owner and repo name
      - Workflow name: `release.yml`
      - Environment name: `pypi`
-   - TestPyPI: https://test.pypi.org/manage/account/publishing/, the same, with environment name `testpypi`.
    - A pending publisher creates the project on the first successful publish. If the name
      `audio-notes` is taken, rename the project in `pyproject.toml` (and the publisher entries) first.
 3. **Create GitHub environments** (Repository Settings -> Environments):
-   - `testpypi`: no protection needed.
    - `pypi`: enable **Required reviewers** and add yourself. The PyPI publish job then waits
      for your manual approval in the Actions UI.
 4. (Optional) Settings -> Actions -> General: restrict allowed actions to the ones the workflows use.
@@ -50,7 +48,7 @@ git push origin v0.1.0a1
    git tag v0.1.0
    git push origin v0.1.0
    ```
-3. Watch the Actions run: `test` -> `build` -> `publish-testpypi` -> `publish-pypi` (**approve it**
+3. Watch the Actions run: `test` -> `build` -> `publish-pypi` (**approve it**
    when it pauses). In parallel, `installer` builds `audio-notes-setup-<version>.exe` and attaches
    it to a GitHub Release.
 4. Verify: `uv tool install audio-notes==0.1.0` in a clean shell; run the installer on a clean machine.

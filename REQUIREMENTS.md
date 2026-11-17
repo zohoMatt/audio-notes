@@ -61,7 +61,7 @@
   - 安装器：创建开始菜单项；可选开机自启；可选加入 PATH。
 - **F21** 模型首次运行时下载（安装包不内置），托盘显示"下载中"状态；下载完成后可完全离线使用。同时提供 `audio-notes model download` 预下载（后续）。
 - **F22** 托盘菜单"连接到 Claude"：调用 `setup claude` 写入 Claude 的 MCP 配置，写入前必须弹窗确认；配置中使用 `audio-notes` 可执行文件的**绝对路径**（Claude 桌面端子进程 PATH 可能不完整）。CLI 的 `setup claude` 默认只打印配置，加 `--write` 才写入。
-- **F23** CI/CD（GitHub Actions）：push/PR 触发 Windows 上的 pytest；推送 `v*` 标签触发构建，依次发布 TestPyPI、PyPI（使用 Trusted Publishing，PyPI 发布需手动批准），并构建安装包挂到 GitHub Releases。版本号由 git 标签生成（hatch-vcs）。
+- **F23** CI/CD（GitHub Actions）：push/PR 触发 Windows 上的 pytest；推送 `v*` 标签触发构建，发布 PyPI（使用 Trusted Publishing，PyPI 发布需手动批准），并构建安装包挂到 GitHub Releases。版本号由 git 标签生成（hatch-vcs）。
 
 - **F33** 分发渠道优先级：MVP 以 `uv tool install` / `pip install` 为主要推荐渠道（不会触发 SmartScreen 的下载拦截）；Windows 安装包作为附加渠道。
 - **F34** 防误报与拦截缓解（MVP 必做）：

@@ -46,26 +46,8 @@ jobs:
 
   # PyPI publishing stays off until you set the repository variable PUBLISH_TO_PYPI to "true"
   # (Settings > Secrets and variables > Actions > Variables) after configuring Trusted Publishing.
-  publish-testpypi:
-    needs: build
-    if: startsWith(github.ref, 'refs/tags/v') && vars.PUBLISH_TO_PYPI == 'true'
-    runs-on: ubuntu-latest
-    environment:
-      name: testpypi
-      url: https://test.pypi.org/p/audio-notes
-    permissions:
-      id-token: write # Trusted Publishing (OIDC), no stored token
-    steps:
-      - uses: actions/download-artifact@v4.3.0
-        with:
-          name: dist
-          path: dist/
-      - uses: pypa/gh-action-pypi-publish@v1.12.4
-        with:
-          repository-url: https://test.pypi.org/legacy/
-
   publish-pypi:
-    needs: publish-testpypi
+    needs: build
     if: startsWith(github.ref, 'refs/tags/v') && vars.PUBLISH_TO_PYPI == 'true'
     runs-on: ubuntu-latest
     # The `pypi` environment must have "Required reviewers" set: that is the manual approval gate.

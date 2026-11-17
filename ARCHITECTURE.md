@@ -93,7 +93,7 @@ audio-notes/
 ├── .github/
 │   └── workflows/
 │       ├── ci.yml              # push / PR：Windows 上跑 pytest
-│       └── release.yml         # v* 标签：构建 → TestPyPI → PyPI（手动批准）+ 安装包
+│       └── release.yml         # v* 标签：构建 → PyPI（手动批准）+ 安装包
 ├── installer/                  # M6：PyInstaller spec、Inno Setup 脚本
 ├── docs/                       # 目标位置；当前两份文档仍在根目录
 │   ├── REQUIREMENTS.md
@@ -230,8 +230,7 @@ audio-notes setup claude         输出 / 写入（--write）Claude 的 MCP 配�
 flowchart LR
     T["push tag v*"] --> TEST["test<br/>windows-latest / pytest"]
     TEST --> BUILD["uv build<br/>sdist + wheel"]
-    BUILD --> TP["TestPyPI"]
-    TP --> PY["PyPI<br/>environment: pypi<br/>手动批准"]
+    BUILD --> PY["PyPI<br/>environment: pypi<br/>手动批准"]
     TEST --> EXE["PyInstaller onedir<br/>+ Inno Setup"]
     EXE --> GH["GitHub Releases<br/>安装包 .exe"]
 ```
