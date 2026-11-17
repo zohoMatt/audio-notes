@@ -133,7 +133,7 @@ audio-notes/
 │       │
 │       ├── tray/               # 托盘图标
 │       │   ├── app.py          # pystray 主循环、菜单
-│       │   ├── icons.py        # 空闲 / 录制中 / 出错
+│       │   ├── icons.py        # 应用图标 + 空闲 / 录制中 / 出错 / 下载中角标（installer/make_icon.py 生成 .ico）
 │       │   └── first_run.py    # 首次法律提示
 │       │
 │       ├── web/                # 本地 Web 面板

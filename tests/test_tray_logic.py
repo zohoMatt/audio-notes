@@ -55,6 +55,28 @@ def test_icons_distinct_per_state():
     assert make_icon(TrayState.IDLE, 32).size == (32, 32)
 
 
+def test_idle_icon_is_the_plain_app_icon_and_states_add_a_corner_badge():
+    from audio_notes.tray.icons import app_icon
+
+    assert make_icon(TrayState.IDLE, 64).tobytes() == app_icon(64).tobytes()
+    plain = app_icon(64)
+    # the badge sits bottom-right; the top-left corner is identical in every state
+    for s in (TrayState.RECORDING, TrayState.ERROR, TrayState.DOWNLOADING):
+        img = make_icon(s, 64)
+        assert img.crop((0, 0, 24, 24)).tobytes() == plain.crop((0, 0, 24, 24)).tobytes()
+        assert img.crop((40, 40, 64, 64)).tobytes() != plain.crop((40, 40, 64, 64)).tobytes()
+
+
+def test_shipped_ico_has_the_expected_sizes():
+    from pathlib import Path
+
+    from PIL import Image
+
+    ico = Path(__file__).resolve().parents[1] / "installer" / "audio-notes.ico"
+    with Image.open(ico) as im:
+        assert {(16, 16), (32, 32), (48, 48), (256, 256)} <= set(im.info["sizes"])
+
+
 # ---- first run ---------------------------------------------------------------
 def test_first_run_accept_writes_flag_and_stops_asking():
     calls = []

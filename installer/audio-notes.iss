@@ -23,6 +23,7 @@ SolidCompression=yes
 WizardStyle=modern
 UninstallDisplayName=Audio Notes
 UninstallDisplayIcon={app}\audio-notes-tray.exe
+SetupIconFile=audio-notes.ico
 ChangesEnvironment=yes
 
 [Tasks]
@@ -40,7 +41,7 @@ Name: "{app}\data"; Permissions: users-modify
 Source: "..\dist\audio-notes\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion createallsubdirs; Excludes: "data\*"
 
 [Icons]
-Name: "{group}\Audio Notes"; Filename: "{app}\audio-notes-tray.exe"
+Name: "{group}\Audio Notes"; Filename: "{app}\audio-notes-tray.exe"; IconFilename: "{app}\audio-notes-tray.exe"
 Name: "{group}\Uninstall Audio Notes"; Filename: "{uninstallexe}"
 
 [Registry]

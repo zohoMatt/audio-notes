@@ -12,6 +12,7 @@ from PyInstaller.utils.hooks import (
 )
 
 HERE = Path(SPECPATH)  # noqa: F821 (injected by PyInstaller)
+ICON = str(HERE / "audio-notes.ico")  # regenerate with installer/make_icon.py
 
 datas, binaries, hiddenimports = [], [], []
 
@@ -62,11 +63,11 @@ pyz_tray = PYZ(a_tray.pure)  # noqa: F821
 
 exe_cli = EXE(  # noqa: F821
     pyz_cli, a_cli.scripts, [], exclude_binaries=True, name="audio-notes",
-    console=True, upx=False,
+    console=True, upx=False, icon=ICON,
 )
 exe_tray = EXE(  # noqa: F821
     pyz_tray, a_tray.scripts, [], exclude_binaries=True, name="audio-notes-tray",
-    console=False, upx=False,
+    console=False, upx=False, icon=ICON,
 )
 
 COLLECT(  # noqa: F821
