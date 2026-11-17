@@ -28,6 +28,7 @@ class StatusPublisher:
         self._recording = False
         self._session_id: str | None = None
         self._segments = 0
+        self._paused = False
         self._started = False
         self._closed = False
         self._stop = threading.Event()
@@ -50,8 +51,10 @@ class StatusPublisher:
         recording: bool | None = None,
         session_id: str | None = None,
         segments: int | None = None,
+        paused: bool | None = None,
     ) -> None:
-        """Change the published fields (None = keep) and write status.json now."""
+        """Change the published fields (None = keep) and write status.json now. Ending the
+        recording also ends a pause."""
         with self._lock:
             if self._closed:
                 return
@@ -61,6 +64,10 @@ class StatusPublisher:
                 self._session_id = session_id
             if segments is not None:
                 self._segments = segments
+            if paused is not None:
+                self._paused = paused
+            if not self._recording:
+                self._paused = False
             if self._started:
                 self._write_locked()
 
@@ -70,7 +77,7 @@ class StatusPublisher:
         with self._lock:
             if self._closed:
                 return
-            self._recording = False
+            self._recording = self._paused = False
             self._closed = True
             self._stop.set()
             if self._started:
@@ -102,6 +109,7 @@ class StatusPublisher:
             "recording": self._recording,
             "session_id": self._session_id,
             "segments": self._segments,
+            "paused": self._paused,
             "last_heartbeat": time.time(),
             "pid": os.getpid(),
         }

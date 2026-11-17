@@ -30,11 +30,21 @@ def test_compute_state(recording, error, downloading, expected):
     assert compute_state(recording, error, downloading) is expected
 
 
+def test_compute_state_paused():
+    assert compute_state(True, None, False, paused=True) is TrayState.PAUSED
+    assert compute_state(True, "boom", False, paused=True) is TrayState.ERROR
+    assert compute_state(False, None, False, paused=True) is TrayState.IDLE
+
+
 def test_describe_menu_availability():
     idle = describe(TrayState.IDLE)
     assert idle.toggle_label == "Start recording" and idle.toggle_enabled
+    assert not idle.stop_visible
     rec = describe(TrayState.RECORDING)
-    assert rec.toggle_label == "Pause recording" and rec.toggle_enabled
+    assert rec.toggle_label == "Pause recording" and rec.toggle_enabled and rec.stop_visible
+    paused = describe(TrayState.PAUSED)
+    assert paused.toggle_label == "Continue recording" and paused.stop_visible and not paused.mic_enabled
+    assert "paused" in paused.tooltip
     dl = describe(TrayState.DOWNLOADING)
     assert not dl.toggle_enabled and not dl.mic_enabled and "download" in dl.tooltip
     err = describe(TrayState.ERROR, "no device")
@@ -97,6 +107,7 @@ def test_first_run_decline_writes_nothing():
 class FakeController:
     def __init__(self):
         self.recording = False
+        self.paused = False
         self.mic = True
         self.error = None
         self.downloading = False
@@ -108,10 +119,19 @@ class FakeController:
         self.recording = True
 
     def stop(self):
-        self.recording = False
+        self.recording = self.paused = False
+
+    def pause(self):
+        self.paused = self.recording
+
+    def resume(self):
+        self.paused = False
 
     def is_recording(self):
         return self.recording
+
+    def is_paused(self):
+        return self.paused
 
     def mic_enabled(self):
         return self.mic
@@ -142,8 +162,14 @@ def test_toggle_actions():
     app = make_app(ctrl)
     app.toggle_recording()
     assert ctrl.recording and app.view().state is TrayState.RECORDING
+    app.toggle_recording()  # pause: the session stays open
+    assert ctrl.recording and ctrl.paused and app.view().state is TrayState.PAUSED
+    assert app.view().toggle_label == "Continue recording"
+    app.toggle_recording()  # continue
+    assert ctrl.recording and not ctrl.paused
     app.toggle_recording()
-    assert not ctrl.recording
+    app.stop_recording()  # stop works while paused
+    assert not ctrl.recording and not ctrl.paused
     app.toggle_mic()
     assert ctrl.mic is False
     ctrl.fail_start = True
@@ -215,6 +241,9 @@ def test_microphone_cannot_be_switched_while_recording():
     app.toggle_mic()  # ignored while recording
     assert ctrl.mic is True and not app.view().mic_enabled
     app.toggle_recording()
+    app.toggle_mic()  # still ignored while paused
+    assert ctrl.mic is True
+    app.stop_recording()
     app.toggle_mic()
     assert ctrl.mic is False
 
@@ -226,5 +255,8 @@ def test_error_while_recording_still_offers_stop():
     ctrl.recording, ctrl.error = True, "device lost (retrying)"
     app = make_app(ctrl)
     assert app.view().state is TrayState.ERROR and app.view().toggle_label == "Pause recording"
+    assert app.view().stop_visible
     app.toggle_recording()
+    assert ctrl.paused and app.view().toggle_label == "Continue recording"
+    app.stop_recording()
     assert ctrl.recording is False

@@ -81,9 +81,9 @@ def test_get_transcript_cursor_survives_a_new_session(data_dir):
     _, text = _call(data_dir, "get_transcript", {"since_cursor": "2026-01-01_10-00-00:2"})
     lines = text.splitlines()
     assert lines == [
-        "(rest of session 2026-01-01_10-00-00)",
+        "(rest of session Stream001 (2026-01-01_10-00-00))",
         "[02:05] Me: ok",
-        "(new session 2026-01-01_11-00-00 started)",
+        "(new session Stream002 (2026-01-01_11-00-00) started)",
         "[00:01] Them: new one",
         "[00:03] Me: new two",
         "cursor: 2026-01-01_11-00-00:2",
@@ -100,10 +100,42 @@ def test_search_sessions_status(data_dir):
     _, text = _call(data_dir, "search_transcript", {"query": "zzz"})
     assert "No matches" in text
     _, text = _call(data_dir, "list_sessions")
-    assert "2026-01-01_10-00-00" in text and "3 segments" in text and "[active]" in text
+    assert text == "Stream001  2026-01-01_10-00-00  3 segments  [recording]"
     _, text = _call(data_dir, "get_status")
-    assert "recording=yes" in text and "segments=3" in text
+    assert "recording=yes" in text and "segments=3" in text and "Stream001" in text
+    w.set_paused(True)
+    _, text = _call(data_dir, "get_status")
+    assert "recording=paused" in text
     w.close()
+
+
+def test_sessions_are_addressed_by_stream_name(data_dir):
+    _fill().close()
+    w2 = SessionWriter(datetime(2026, 1, 1, 11))
+    w2.append(1, 2, "them", "budget again")
+    w2.close()
+    _, text = _call(data_dir, "list_sessions")
+    assert text.splitlines() == [
+        "Stream002  2026-01-01_11-00-00  1 segments",
+        "Stream001  2026-01-01_10-00-00  3 segments",
+    ]
+    _, text = _call(data_dir, "get_transcript", {"session": "Stream001"})
+    assert text.splitlines()[0] == "(Stream001 (2026-01-01_10-00-00))"
+    assert "hello there" in text and text.endswith("cursor: 2026-01-01_10-00-00:3")
+    _, text = _call(data_dir, "get_transcript", {"session": "stream 1", "since_cursor": "2026-01-01_10-00-00:2"})
+    assert "hello there" not in text and "[02:05] Me: ok" in text
+    _, text = _call(data_dir, "get_transcript", {"session": "Stream009"})
+    assert "No session" in text
+    _, text = _call(data_dir, "search_transcript", {"query": "budget"})
+    assert text.splitlines() == [
+        "2 match(es):",
+        "-- Stream001 (2026-01-01_10-00-00)",
+        "[01:05] Them: Budget numbers",
+        "-- Stream002 (2026-01-01_11-00-00)",
+        "[00:01] Them: budget again",
+    ]
+    _, text = _call(data_dir, "search_transcript", {"query": "budget", "session": "Stream002"})
+    assert "budget again" in text and "Budget numbers" not in text
 
 
 def test_empty_store(data_dir):

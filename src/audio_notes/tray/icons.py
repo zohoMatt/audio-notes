@@ -2,7 +2,8 @@
 
 The app icon is an indigo rounded square holding a pencil whose body is a row of sound-wave
 bars. Tray states other than idle add a round badge in the bottom-right corner: a play triangle
-while recording, an exclamation mark on error, a down arrow while the model downloads.
+while recording, pause bars while paused, an exclamation mark on error, a down arrow while the
+model downloads.
 `installer/make_icon.py` renders `app_icon` into the .ico used by the exe and the installer.
 """
 
@@ -17,6 +18,7 @@ _WHITE = (255, 255, 255, 255)
 _ERASER = (244, 114, 182, 255)  # pink
 _BADGE = {
     TrayState.RECORDING: (220, 38, 38, 255),  # red
+    TrayState.PAUSED: (100, 116, 139, 255),  # slate grey
     TrayState.ERROR: (234, 160, 12, 255),  # amber
     TrayState.DOWNLOADING: (56, 189, 248, 255),  # sky blue (readable on the indigo)
 }
@@ -63,6 +65,10 @@ def _badge(img: Image.Image, n: int, state: TrayState) -> None:
     t = r * 0.55
     if state is TrayState.RECORDING:  # play triangle
         d.polygon([(cx - t * 0.7, cy - t), (cx - t * 0.7, cy + t), (cx + t, cy)], fill=_WHITE)
+    elif state is TrayState.PAUSED:  # two bars
+        u = r * 0.17
+        for x in (cx - t * 0.45, cx + t * 0.45):
+            d.rectangle((x - u, cy - t * 0.85, x + u, cy + t * 0.85), fill=_WHITE)
     elif state is TrayState.ERROR:  # exclamation mark
         u = r * 0.16
         d.rectangle((cx - u, cy - t, cx + u, cy + t * 0.25), fill=_WHITE)

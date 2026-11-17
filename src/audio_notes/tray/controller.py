@@ -13,7 +13,16 @@ class RecorderController(Protocol):
     def stop(self) -> None:
         """Stop recording and close the session. Safe to call when not recording."""
 
-    def is_recording(self) -> bool: ...
+    def pause(self) -> None:
+        """Stop capturing but keep the session open. No-op when not recording or already paused."""
+
+    def resume(self) -> None:
+        """Continue a paused session in the same transcript. May raise, like `start()`."""
+
+    def is_recording(self) -> bool:
+        """A session is open, whether capturing or paused."""
+
+    def is_paused(self) -> bool: ...
 
     def mic_enabled(self) -> bool: ...
 

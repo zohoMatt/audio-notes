@@ -8,6 +8,7 @@ from typing import Optional
 import typer
 
 from audio_notes.store.follow import Follower
+from audio_notes.store.models import stream_label
 from audio_notes.store.reader import StoreReader, fmt_segment
 
 
@@ -20,19 +21,23 @@ def register(app: typer.Typer) -> None:
             typer.echo("No sessions.")
             return
         for s in items:
-            typer.echo(f"{s.id}  {s.segment_count:>5} segments" + ("  [active]" if s.is_active else ""))
+            state = "  [paused]" if s.is_paused else "  [recording]" if s.is_active else ""
+            typer.echo(f"{stream_label(s.stream)}  {s.id}  {s.segment_count:>5} segments{state}")
 
     @app.command()
     def show(
-        session: Optional[str] = typer.Argument(None, help="Session id; default: latest."),
+        session: Optional[str] = typer.Argument(None, help="Stream name (Stream007) or session id; default: latest."),
         n: int = typer.Option(20, "-n", help="Show the last N lines (0 = all)."),
         follow: bool = typer.Option(False, "-f", "--follow", help="Keep printing new lines."),
     ) -> None:
         """Show a transcript."""
         reader = StoreReader()
-        if session and not any(s.id == session for s in reader.list_sessions()) and not follow:
-            typer.echo(f"No such session: {session}", err=True)
-            raise typer.Exit(1)
+        if session:
+            resolved = reader.resolve_session_id(session)
+            if resolved is None and not follow:
+                typer.echo(f"No such session: {session}", err=True)
+                raise typer.Exit(1)
+            session = resolved or session
         follower = Follower(reader, session)  # session None: follow the latest, switching to newer ones
         segs = [v for kind, v in follower.poll() if kind == "segment"]
         if n > 0:
@@ -55,12 +60,15 @@ def register(app: typer.Typer) -> None:
     @app.command()
     def status() -> None:
         """Show recorder status."""
-        st = StoreReader().read_status()
+        reader = StoreReader()
+        st = reader.read_status()
         if not st.alive:
             typer.echo("Recorder is not running.")
             return
         age = time.time() - (st.last_heartbeat or 0)
+        name = reader.stream_name(st.session_id)
+        session = f"{name} ({st.session_id})" if name else st.session_id
         typer.echo(
-            f"running  recording={'yes' if st.recording else 'no'}  session={st.session_id}  "
+            f"running  recording={'paused' if st.paused else 'yes' if st.recording else 'no'}  session={session}  "
             f"segments={st.segments}  pid={st.pid}  heartbeat={age:.0f}s ago"
         )

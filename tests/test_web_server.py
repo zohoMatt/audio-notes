@@ -204,6 +204,7 @@ def test_panel_server_port_in_use_raises():
 class FakeController:
     def __init__(self, fail_start=None):
         self.recording = False
+        self.paused = False
         self.downloading = False
         self.error = None
         self.starts = self.stops = 0
@@ -218,10 +219,19 @@ class FakeController:
 
     def stop(self):
         self.stops += 1
-        self.recording = False
+        self.recording = self.paused = False
+
+    def pause(self):
+        self.paused = self.recording
+
+    def resume(self):
+        self.paused = False
 
     def is_recording(self):
         return self.recording
+
+    def is_paused(self):
+        return self.paused
 
     def last_error(self):
         return self.error
@@ -257,7 +267,9 @@ def test_recording_post_requires_token_and_host():
 def test_recording_start_stop_roundtrip():
     fc = FakeController()
     c = ctl_client(fc)
-    assert get(c, "/api/control").json() == {"available": True, "recording": False, "downloading": False, "error": None}
+    assert get(c, "/api/control").json() == {
+        "available": True, "recording": False, "paused": False, "downloading": False, "error": None
+    }
     r = post(c, {"recording": True})
     assert r.status_code == 200 and r.json()["recording"] is True and fc.starts == 1
     assert post(c, {"recording": True}).status_code == 200 and fc.starts == 1  # idempotent
@@ -265,7 +277,21 @@ def test_recording_start_stop_roundtrip():
     assert r.json()["recording"] is False and fc.stops == 1
 
 
-@pytest.mark.parametrize("body", [{}, {"recording": "yes"}, [1], "x"])
+def test_recording_actions_pause_resume_stop():
+    fc = FakeController()
+    c = ctl_client(fc)
+    assert post(c, {"action": "start"}).json()["recording"] is True
+    r = post(c, {"action": "pause"}).json()
+    assert r["recording"] is True and r["paused"] is True
+    r = post(c, {"action": "resume"}).json()
+    assert r["recording"] is True and r["paused"] is False and fc.starts == 1  # same session
+    post(c, {"action": "pause"})
+    r = post(c, {"action": "stop"}).json()
+    assert r["recording"] is False and r["paused"] is False and fc.stops == 1
+    assert post(c, {"action": "rewind"}).status_code == 400
+
+
+@pytest.mark.parametrize("body", [{}, {"recording": "yes"}, {"action": 1}, [1], "x"])
 def test_recording_post_bad_body(body):
     fc = FakeController()
     assert post(ctl_client(fc), body).status_code == 400
@@ -279,5 +305,6 @@ def test_recording_start_failure_reports_error():
     assert r.json()["error"] == "no audio device" and r.json()["recording"] is False
 
 
-def test_index_has_record_button(client):
-    assert 'id="rec-btn"' in get(client, "/").text
+def test_index_has_record_buttons_and_logo(client):
+    html = get(client, "/").text
+    assert 'id="rec-btn"' in html and 'id="pause-btn"' in html and 'id="logo"' in html

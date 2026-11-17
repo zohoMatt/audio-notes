@@ -33,6 +33,23 @@ class LoadingTranscriber(FakeTranscriber):
         self.downloading_seen = self.recorder.is_downloading_model()
 
 
+class SilentSource(AudioSource):
+    """Opens and closes without producing audio; `fail` makes the next start() raise."""
+
+    def __init__(self, speaker):
+        self.speaker = speaker
+        self.starts = self.stops = 0
+        self.fail = False
+
+    def start(self, on_chunk, origin):
+        if self.fail:
+            raise RuntimeError(f"no {self.speaker} device")
+        self.starts += 1
+
+    def stop(self):
+        self.stops += 1
+
+
 class FailingSource(AudioSource):
     def __init__(self, speaker):
         self.speaker = speaker
@@ -87,6 +104,40 @@ def test_session_is_readable_while_recording_and_closed_after():
     assert rec.session_id is None  # session is closed
     sessions = StoreReader().list_sessions()
     assert [s.id for s in sessions] == [sid] and sessions[0].is_active is False
+
+
+def test_pause_keeps_the_session_and_resume_continues_it():
+    them, me = SilentSource("them"), SilentSource("me")
+    rec = Recorder(source_factory=lambda mic: [them, me], transcriber=FakeTranscriber())
+    rec.pause()  # not recording: no-op
+    rec.start()
+    sid = rec.session_id
+    rec.pause()
+    assert rec.is_recording() and rec.is_paused() and them.stops == me.stops == 1
+    st = StoreReader().read_status()
+    assert st.recording and st.paused and st.session_id == sid
+    info = StoreReader().list_sessions()[0]
+    assert info.is_active and info.is_paused and info.stream == 1
+    rec.pause()  # idempotent
+    assert them.stops == 1
+
+    them.fail = True  # system audio gone while paused: continue fails, the session stays paused
+    with pytest.raises(RuntimeError):
+        rec.resume()
+    assert rec.is_paused() and "Cannot capture audio" in rec.last_error()
+    them.fail = False
+    rec.resume()
+    assert not rec.is_paused() and rec.last_error() is None and rec.session_id == sid
+    assert them.starts == 2 and not StoreReader().read_status().paused
+
+    rec.pause()
+    rec.stop()  # stop works while paused
+    assert not rec.is_recording() and not rec.is_paused()
+    st = StoreReader().read_status()
+    assert not st.recording and not st.paused
+    rec.start()
+    assert rec.session_id != sid  # after stop, only a new session
+    rec.stop()
 
 
 def test_mic_flag_reaches_the_source_factory():

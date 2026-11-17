@@ -2,9 +2,11 @@
 
 Run from the repo: uv run python scripts/demos/tray_web_demo.py
 Starts the real TrayApp (fake recorder) and the real PanelServer on the default port (8765).
-Right-click the tray icon: "Start recording" begins feeding a canned two-speaker conversation
-through SessionWriter into a temporary data dir; "Pause recording" stops it. Double-click the
-icon (or "Open panel") to open the browser with the token URL. The URL is also printed here.
+Right-click the tray icon (or use the panel's buttons): "Start recording" begins feeding a canned
+two-speaker conversation through SessionWriter into a temporary data dir; "Pause recording" holds
+it and "Continue recording" goes on in the same session; "Stop recording" closes the session.
+Double-click the icon (or "Open panel") to open the browser with the token URL. The URL is also
+printed here.
 Never touches the real %APPDATA% data or Claude config; "Connect to Claude" writes to a temp file.
 Set DEMO_PORT to use another port; DEMO_NO_TRAY=1 runs only the panel (feeder starts at once).
 """
@@ -43,11 +45,13 @@ class FakeController:
     def __init__(self):
         self._mic = True
         self._stop = threading.Event()
+        self._paused = threading.Event()
         self._thread = None
         self._writer = None
 
     def start(self):
         self._stop.clear()
+        self._paused.clear()
         self._writer = SessionWriter()
         self._thread = threading.Thread(target=self._feed, args=(self._writer,), daemon=True)
         self._thread.start()
@@ -57,11 +61,14 @@ class FakeController:
         for who, text in SCRIPT:
             if self._stop.wait(2.5):
                 break
+            while self._paused.is_set():
+                if self._stop.wait(0.2):
+                    return
             if who == "me" and not self._mic:
                 continue
             a = time.monotonic() - t0
             w.append(a - 2.0, a, who, text)
-        # canned script finished: keep the session open (heartbeat) until paused
+        # canned script finished: keep the session open (heartbeat) until stopped
 
     def stop(self):
         self._stop.set()
@@ -71,8 +78,21 @@ class FakeController:
             self._writer.close()
         self._writer = self._thread = None
 
+    def pause(self):
+        if self._writer:
+            self._paused.set()
+            self._writer.set_paused(True)
+
+    def resume(self):
+        if self._writer:
+            self._paused.clear()
+            self._writer.set_paused(False)
+
     def is_recording(self):
         return self._writer is not None
+
+    def is_paused(self):
+        return self._writer is not None and self._paused.is_set()
 
     def mic_enabled(self):
         return self._mic
@@ -89,11 +109,11 @@ class FakeController:
 
 def main():
     port = int(os.environ.get("DEMO_PORT", Config.from_env().web_port))
-    panel = PanelServer(StoreReader(), port)
+    ctrl = FakeController()
+    panel = PanelServer(StoreReader(), port, controller=ctrl)
     panel.start()
     print(f"data dir : {DATA}")
     print(f"panel    : {panel.url}")
-    ctrl = FakeController()
     try:
         if os.environ.get("DEMO_NO_TRAY"):
             ctrl.start()

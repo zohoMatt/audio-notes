@@ -60,8 +60,9 @@ class TrayApp:
     def view(self) -> TrayView:
         err = self.controller.last_error()
         recording = self.controller.is_recording()
-        state = compute_state(recording, err, self.controller.is_downloading_model())
-        return describe(state, err, recording)
+        paused = recording and self.controller.is_paused()
+        state = compute_state(recording, err, self.controller.is_downloading_model(), paused)
+        return describe(state, err, recording, paused)
 
     def refresh(self) -> None:
         """Re-read the controller; update icon, tooltip and menu when something changed."""
@@ -86,14 +87,25 @@ class TrayApp:
 
     # ---- actions (menu callbacks) -----------------------------------------
     def toggle_recording(self) -> None:
+        """Start when idle, pause while recording, continue while paused."""
         try:
-            if self.controller.is_recording():
-                self.controller.stop()
-            else:
+            if not self.controller.is_recording():
                 self.controller.start()
+            elif self.controller.is_paused():
+                self.controller.resume()
+            else:
+                self.controller.pause()
         except Exception as e:
             log.exception("toggle recording failed")
             self._notify(f"Could not change recording state: {e}")
+        self.refresh()
+
+    def stop_recording(self) -> None:
+        try:
+            self.controller.stop()
+        except Exception as e:
+            log.exception("stop recording failed")
+            self._notify(f"Could not stop recording: {e}")
         self.refresh()
 
     def toggle_mic(self) -> None:
@@ -160,6 +172,7 @@ class TrayApp:
         return pystray.Menu(
             Item(lambda item: self.view().toggle_label, bg(self.toggle_recording),
                  enabled=lambda item: self.view().toggle_enabled),
+            Item("Stop recording", bg(self.stop_recording), visible=lambda item: self.view().stop_visible),
             Item(lambda item: self.view().mic_label, bg(self.toggle_mic), checked=lambda item: self.controller.mic_enabled(),
                  enabled=lambda item: self.view().mic_enabled),
             pystray.Menu.SEPARATOR,

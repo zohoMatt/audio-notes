@@ -110,6 +110,35 @@ def run(sources, transcriber):
     return sink
 
 
+def _wait(pred, timeout=10.0):
+    end = time.monotonic() + timeout
+    while not pred():
+        assert time.monotonic() < end, "timed out"
+        time.sleep(0.02)
+
+
+def test_pause_flushes_pending_speech_and_resume_reopens_the_sources():
+    lost = []
+    src = FakeSource("me", np.concatenate([silence(1.0), load("me_question.wav")]))  # ends mid-speech
+    sink = MemorySink()
+    r = PipelineRunner([src], FakeTranscriber(), sink, clock=lambda: 50.0, on_source_lost=lambda s, e: lost.append(s))
+    r.start()
+    src._thread.join()
+    r.pause_sources()
+    assert r.paused and src.stopped
+    _wait(lambda: len(sink.items) == 1)  # the trailing utterance is not held back until resume
+    assert r.restart_sources() == {}  # a device change while paused does not reopen anything
+    src.on_lost(RuntimeError("gone"))  # neither is a lost device reported
+    assert lost == []
+    src.stopped = False
+    assert r.resume_sources() == {} and not r.paused
+    assert src.origin == 50.0  # the session time base is kept
+    src._thread.join()
+    r.stop()
+    assert len(sink.items) == 2 and [s.seq for s in sink.items] == [1, 2]
+    assert r.resume_sources() == {}  # stopped: nothing to resume
+
+
 def test_two_sources_speakers_and_ordering():
     me = FakeSource("me", utterances("me_followup.wav", "me_question.wav"))
     them = FakeSource("them", utterances("them_budget.wav", "them_release.wav"), rate=44100)

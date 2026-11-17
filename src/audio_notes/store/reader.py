@@ -8,17 +8,20 @@ each poll proportional to the new lines rather than to the whole history.
 from __future__ import annotations
 
 import json
+import re
 import threading
 import time
 from collections import OrderedDict
 from pathlib import Path
 
 from audio_notes import paths
-from audio_notes.store.models import Segment, SessionInfo, Status
+from audio_notes.store.models import Segment, SessionInfo, Status, stream_label
 
 # Writer beats every ~2 s; allow a few missed beats (slow disk, antivirus) before "dead".
 HEARTBEAT_STALE_AFTER_S = 8.0
 _SEGMENT_CACHE_FILES = 8  # sessions whose parsed lines are kept in memory (most recently used)
+# "Stream7", "stream 007", "Stream#7", or a bare "7": the n-th session, oldest first.
+_STREAM_REF = re.compile(r"^\s*(?:stream\s*#?\s*)?0*(\d+)\s*$", re.IGNORECASE)
 
 
 def fmt_time(seconds: float) -> str:
@@ -94,15 +97,34 @@ class StoreReader:
         stems = [p.stem for p in d.glob("*.jsonl")]
         return max(stems, key=paths.session_sort_key) if stems else None
 
-    def _resolve(self, session_id: str | None) -> Path | None:
-        if session_id is None:
-            session_id = self.latest_session_id()
-            if session_id is None:
-                return None
-        if not paths.is_valid_session_id(session_id):
+    def resolve_session_id(self, ref: str | None) -> str | None:
+        """Session id for `ref`: a session id, a stream name ("Stream007", "stream 7", "7"), or
+        None for the latest session. None when there is no such session."""
+        if ref is None or not str(ref).strip():
+            return self.latest_session_id()
+        ref = str(ref).strip()
+        m = _STREAM_REF.match(ref)
+        if m:
+            n = int(m.group(1))
+            ids = [p.stem for p in reversed(self._files())]  # oldest first
+            return ids[n - 1] if 1 <= n <= len(ids) else None
+        if not paths.is_valid_session_id(ref) or not (paths.sessions_dir() / f"{ref}.jsonl").is_file():
             return None
-        p = paths.sessions_dir() / f"{session_id}.jsonl"
-        return p if p.is_file() else None
+        return ref
+
+    def stream_name(self, session_id: str | None) -> str | None:
+        """"Stream007" for a session id, or None when it is not (or no longer) on disk."""
+        if session_id is None:
+            return None
+        files = self._files()
+        for i, p in enumerate(files):
+            if p.stem == session_id:
+                return stream_label(len(files) - i)
+        return None
+
+    def _resolve(self, session_id: str | None) -> Path | None:
+        session_id = self.resolve_session_id(session_id)
+        return None if session_id is None else paths.sessions_dir() / f"{session_id}.jsonl"
 
     # -- cached parsing ----------------------------------------------------
 
@@ -137,16 +159,20 @@ class StoreReader:
 
     def list_sessions(self) -> list[SessionInfo]:
         status = self.read_status()
+        files = self._files()
         out = []
-        for p in self._files():
+        for i, p in enumerate(files):
             started = paths.session_started_at(p.stem)
+            active = bool(status.recording and status.alive and status.session_id == p.stem)
             out.append(
                 SessionInfo(
                     id=p.stem,
                     path=p,
                     started_at=started.isoformat() if started else "",
                     segment_count=self._count(p),
-                    is_active=bool(status.recording and status.alive and status.session_id == p.stem),
+                    is_active=active,
+                    stream=len(files) - i,  # newest first, so the oldest is 1
+                    is_paused=active and status.paused,
                 )
             )
         return out
@@ -192,6 +218,7 @@ class StoreReader:
                 alive=alive,
                 last_heartbeat=hb,
                 pid=d.get("pid"),
+                paused=bool(d.get("paused", False)) and alive and bool(d.get("recording", False)),
             )
         except (OSError, ValueError, TypeError):
             return Status(False, None, 0, False, None, None)

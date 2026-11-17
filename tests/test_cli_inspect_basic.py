@@ -29,9 +29,16 @@ def test_sessions_empty_and_listed():
     assert "No sessions" in runner.invoke(app, ["sessions"]).output
     w = _session()
     out = runner.invoke(app, ["sessions"]).output
-    assert "2026-01-01_10-00-00" in out and "3 segments" in out and "[active]" in out
+    assert "Stream001  2026-01-01_10-00-00" in out and "3 segments" in out and "[recording]" in out
     w.close()
-    assert "[active]" not in runner.invoke(app, ["sessions"]).output
+    assert "[recording]" not in runner.invoke(app, ["sessions"]).output
+
+
+def test_show_accepts_a_stream_name():
+    _session(2).close()
+    r = runner.invoke(app, ["show", "stream1"])
+    assert r.exit_code == 0 and r.output.strip()
+    assert runner.invoke(app, ["show", "Stream002"]).exit_code == 1
 
 
 def test_show_latest_and_n():

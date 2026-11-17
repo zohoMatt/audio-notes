@@ -17,6 +17,7 @@ from audio_notes.store.models import TranscriptSink
 log = logging.getLogger(__name__)
 
 _STOP = object()
+_FLUSH = object()  # end of a stretch of audio (pause): transcribe what is pending now
 # A chunk starting this far from where the previous one ended means the stream had a
 # gap (device switch, dropped buffers): restart VAD there so timestamps stay honest.
 _GAP_S = 0.5
@@ -47,6 +48,7 @@ class PipelineRunner:
         self._asr_thread: threading.Thread | None = None
         self._origin = 0.0
         self._started = False
+        self._paused = False
         self._src_lock = threading.Lock()  # serialises start / restart / stop of the sources
 
     def start(self) -> StartFailures:
@@ -80,16 +82,41 @@ class PipelineRunner:
         sees a new default device) once no stream of the process is open. Chunks after the restart
         carry later timestamps, which the per-source loop treats as a gap."""
         with self._src_lock:
-            if not self._started:
-                return {}
+            if not self._started or self._paused:
+                return {}  # paused: the sources stay closed; resume_sources() opens them
             self._stop_sources_locked()
             return self._start_sources_locked()
+
+    def pause_sources(self) -> None:
+        """Close every source (releasing the devices) while the workers and the sink stay up.
+        Speech pending in VAD is transcribed now rather than when capture resumes."""
+        with self._src_lock:
+            if not self._started or self._paused:
+                return
+            self._paused = True
+            self._stop_sources_locked()
+            for q in self._in_qs:
+                q.put(_FLUSH)
+
+    def resume_sources(self) -> StartFailures:
+        """Re-open the sources after `pause_sources()`, on the current default devices.
+        Timestamps keep counting from the session start, so they include the pause."""
+        with self._src_lock:
+            if not self._started or not self._paused:
+                return {}
+            self._paused = False
+            return self._start_sources_locked()
+
+    @property
+    def paused(self) -> bool:
+        return self._paused
 
     def stop(self) -> None:
         with self._src_lock:
             if not self._started:
                 return
             self._started = False
+            self._paused = False
             self._stop_sources_locked()
         for q in self._in_qs:
             q.put(_STOP)
@@ -122,7 +149,7 @@ class PipelineRunner:
                 log.exception("source %s failed to stop", getattr(src, "speaker", "?"))
 
     def _source_lost(self, speaker: Speaker, exc: Exception) -> None:
-        if not self._started or self._on_source_lost is None:
+        if not self._started or self._paused or self._on_source_lost is None:
             return
         try:
             self._on_source_lost(speaker, exc)
@@ -145,6 +172,14 @@ class PipelineRunner:
             item = q.get()
             if item is _STOP:
                 break
+            if item is _FLUSH:
+                try:
+                    if next_t is not None:
+                        self._emit(speaker, self._finish(rs, vad))
+                except Exception:
+                    log.exception("[%s] flush failed", speaker)
+                next_t = None  # the next chunk starts a fresh stretch
+                continue
             try:
                 chunk: AudioChunk = item
                 if next_t is None or abs(chunk.t - next_t) > _GAP_S:
@@ -158,7 +193,8 @@ class PipelineRunner:
             except Exception:
                 log.exception("[%s] processing failed", speaker)
         try:
-            self._emit(speaker, self._finish(rs, vad))
+            if next_t is not None:
+                self._emit(speaker, self._finish(rs, vad))
         except Exception:
             log.exception("[%s] flush failed", speaker)
 
@@ -171,7 +207,7 @@ class PipelineRunner:
         return out + vad.flush()
 
     @staticmethod
-    def _drain(q: queue.Queue) -> None:
+    def _drain(q: queue.Queue) -> None:  # _FLUSH markers are dropped too
         while q.get() is not _STOP:
             pass
 

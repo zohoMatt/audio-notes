@@ -3,7 +3,7 @@
 Security (REQUIREMENTS F31): loopback bind only, Host header allow-list, no CORS,
 a random per-run token on every route, and `Cache-Control: no-store` on everything.
 Transcript data comes only through a `TranscriptReader`; this module must not import the
-capture, asr or processing layers. The one write path, start/stop recording, goes through an
+capture, asr or processing layers. The one write path, start / pause / resume / stop, goes through an
 optional duck-typed controller (the same `RecorderController` the tray uses) and is reported
 as unavailable when the panel runs without one.
 """
@@ -29,7 +29,7 @@ from starlette.routing import Route
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from audio_notes.store.follow import Follower
-from audio_notes.store.models import TranscriptReader
+from audio_notes.store.models import TranscriptReader, stream_label
 
 TOKEN_HEADER = "x-audio-notes-token"
 ALLOWED_HOSTNAMES = ("127.0.0.1", "localhost")
@@ -44,12 +44,16 @@ class RecordingControl(Protocol):
 
     def start(self) -> None: ...
     def stop(self) -> None: ...
+    def pause(self) -> None: ...
+    def resume(self) -> None: ...
     def is_recording(self) -> bool: ...
+    def is_paused(self) -> bool: ...
     def last_error(self) -> str | None: ...
     def is_downloading_model(self) -> bool: ...
 
 
 NO_CONTROLLER = "This panel is not attached to a recorder (start it with `audio-notes tray`)."
+ACTIONS = ("start", "pause", "resume", "stop")
 
 
 def new_token() -> str:
@@ -148,6 +152,7 @@ def create_app(
         return {
             "available": True,
             "recording": controller.is_recording(),
+            "paused": controller.is_paused(),
             "downloading": controller.is_downloading_model(),
             "error": controller.last_error(),
         }
@@ -156,19 +161,33 @@ def create_app(
         return JSONResponse(await asyncio.to_thread(control_state))
 
     async def api_recording(request: Request) -> Response:
-        """POST {"recording": true|false}: idempotent start/stop through the shared controller."""
+        """POST {"action": "start"|"pause"|"resume"|"stop"} (or the older {"recording": true|false}
+        for start/stop). Idempotent, through the shared controller."""
         if controller is None:
             return JSONResponse({"available": False, "reason": NO_CONTROLLER, "error": NO_CONTROLLER}, status_code=409)
+        bad = PlainTextResponse(
+            'expected JSON {"action": "start"|"pause"|"resume"|"stop"} or {"recording": true|false}',
+            status_code=400,
+        )
         try:
-            want = (await request.json())["recording"]
-        except (ValueError, KeyError, TypeError):
-            return PlainTextResponse('expected JSON {"recording": true|false}', status_code=400)
-        if not isinstance(want, bool):
-            return PlainTextResponse("'recording' must be a boolean", status_code=400)
+            body = await request.json()
+        except ValueError:
+            return bad
+        if not isinstance(body, dict):
+            return bad
+        action = body.get("action")
+        if action is None and isinstance(body.get("recording"), bool):
+            action = "start" if body["recording"] else "stop"
+        if action not in ACTIONS:
+            return bad
         try:
-            if want:
+            if action == "start":
                 if not await asyncio.to_thread(controller.is_recording):
                     await asyncio.to_thread(controller.start)  # may block on model load
+            elif action == "pause":
+                await asyncio.to_thread(controller.pause)
+            elif action == "resume":
+                await asyncio.to_thread(controller.resume)
             else:
                 await asyncio.to_thread(controller.stop)
         except Exception as e:
@@ -186,6 +205,8 @@ def create_app(
                     "started_at": s.started_at,
                     "segment_count": s.segment_count,
                     "is_active": s.is_active,
+                    "is_paused": s.is_paused,
+                    "stream": stream_label(s.stream),
                 }
                 for s in infos
             ]

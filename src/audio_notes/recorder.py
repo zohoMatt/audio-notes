@@ -69,7 +69,8 @@ class _Session:
         self.lost = threading.Event()  # a source reported its device gone / switched
         self.done = threading.Event()  # the session is stopping
         self.recovery: threading.Thread | None = None
-        self.degraded = False  # the recorder's error currently comes from failed re-binding
+        self.degraded = False  # the recorder's error describes this session's capture
+        self.paused = False
 
 
 class Recorder:
@@ -143,8 +144,48 @@ class Recorder:
             if session.degraded:
                 self._error = None  # it described this session's capture, which is over
 
+    def pause(self) -> None:
+        """Release the audio devices but keep the session open; `resume()` continues it."""
+        with self._lock:
+            s = self._session
+            if s is None or s.paused:
+                return
+            s.paused = True
+            s.runner.pause_sources()
+            s.writer.set_paused(True)
+            if s.degraded:  # capture is off, so a re-binding problem no longer applies
+                s.degraded, self._error = False, None
+
+    def resume(self) -> None:
+        """Continue a paused session in the same file. Raises (and stays paused) when system
+        audio cannot be opened."""
+        with self._lock:
+            s = self._session
+            if s is None or not s.paused:
+                return
+            try:
+                failed = s.runner.resume_sources()
+            except Exception as e:  # noqa: BLE001
+                failed = {"them": e}
+            problem = capture_problem(failed, s.n_sources)
+            if problem:
+                s.runner.pause_sources()
+                s.degraded, self._error = True, problem
+                raise RuntimeError(problem)
+            for speaker, exc in failed.items():
+                log.warning("%s source unavailable after resuming: %s", speaker, exc)
+            if s.degraded:
+                s.degraded, self._error = False, None
+            s.paused = False
+            s.writer.set_paused(False)
+
     def is_recording(self) -> bool:
+        """A session is open (capturing or paused)."""
         return self._session is not None
+
+    def is_paused(self) -> bool:
+        session = self._session
+        return session is not None and session.paused
 
     def mic_enabled(self) -> bool:
         return self._mic

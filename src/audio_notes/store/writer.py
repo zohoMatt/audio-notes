@@ -37,7 +37,7 @@ class SessionWriter:
         self._closed = False
         self._owns_status = status is None
         self._status = status or StatusPublisher(heartbeat_interval).start()
-        self._status.update(recording=True, session_id=self.session_id, segments=0)
+        self._status.update(recording=True, session_id=self.session_id, segments=0, paused=False)
 
     def _create(self, now: datetime) -> IO[str]:
         # Exclusive create: a second session started within the same second gets a "-2" suffix
@@ -65,6 +65,16 @@ class SessionWriter:
             except OSError:
                 pass  # the transcript line is written; the status catches up on the next beat
             return seg
+
+    def set_paused(self, paused: bool) -> None:
+        """Publish that capture of this (still open) session is paused or running again."""
+        with self._lock:
+            if self._closed:
+                return
+        try:
+            self._status.update(paused=paused)
+        except OSError:
+            pass  # the next heartbeat writes it
 
     def close(self) -> None:
         with self._lock:

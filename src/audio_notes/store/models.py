@@ -26,13 +26,20 @@ class Segment:
         return cls(**json.loads(line))
 
 
+def stream_label(number: int) -> str:
+    """Short name of the n-th session (1 = oldest), e.g. "Stream007"; easy to say in a chat."""
+    return f"Stream{number:03d}"
+
+
 @dataclass(frozen=True)
 class SessionInfo:
     id: str  # JSONL file stem, e.g. "2026-11-16_14-30-00"
     path: Path
     started_at: str  # ISO 8601
     segment_count: int
-    is_active: bool
+    is_active: bool  # the recorder has this session open (recording or paused)
+    stream: int = 0  # 1-based position in chronological order: see `stream_label`
+    is_paused: bool = False  # open, but capture is paused
 
 
 @dataclass(frozen=True)
@@ -43,6 +50,7 @@ class Status:
     alive: bool  # writer heartbeat is fresh (computed by the reader)
     last_heartbeat: float | None  # epoch seconds
     pid: int | None
+    paused: bool = False  # the open session's capture is paused (`recording` stays True)
 
 
 class TranscriptSink(Protocol):

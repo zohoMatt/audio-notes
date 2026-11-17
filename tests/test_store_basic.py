@@ -249,3 +249,41 @@ def test_cursor_tokens(token, expected):
 def test_bad_cursor_token():
     with pytest.raises(ValueError):
         parse_cursor("abc:x")
+
+
+def test_stream_names_number_sessions_oldest_first():
+    from audio_notes.store.models import stream_label
+
+    for hour in (9, 11, 10):  # created out of order: numbering follows the session time
+        SessionWriter(datetime(2026, 1, 1, hour)).close()
+    SessionWriter(datetime(2026, 1, 1, 11)).close()  # same second: "-2", after its twin
+    r = StoreReader()
+    assert [(s.stream, s.id) for s in r.list_sessions()] == [
+        (4, "2026-01-01_11-00-00-2"),
+        (3, "2026-01-01_11-00-00"),
+        (2, "2026-01-01_10-00-00"),
+        (1, "2026-01-01_09-00-00"),
+    ]
+    assert stream_label(3) == "Stream003" and stream_label(1234) == "Stream1234"
+    for ref in ("Stream002", "stream2", "Stream #2", " stream 002 ", "2"):
+        assert r.resolve_session_id(ref) == "2026-01-01_10-00-00", ref
+    assert r.resolve_session_id("Stream005") is None and r.resolve_session_id("Stream000") is None
+    assert r.resolve_session_id("2026-01-01_09-00-00") == "2026-01-01_09-00-00"
+    assert r.resolve_session_id("2026-01-01_08-00-00") is None
+    assert r.resolve_session_id(None) == "2026-01-01_11-00-00-2"
+    assert r.stream_name("2026-01-01_11-00-00") == "Stream003" and r.stream_name("nope") is None
+    assert r.read_segments("Stream001") == ([], 0)
+
+
+def test_paused_status_is_published_and_cleared_on_close():
+    r = StoreReader()
+    w = SessionWriter(datetime(2026, 1, 1))
+    assert r.read_status().paused is False
+    w.set_paused(True)
+    st = r.read_status()
+    assert st.recording and st.paused and r.list_sessions()[0].is_paused
+    w.close()
+    st = r.read_status()
+    assert not st.recording and not st.paused and not r.list_sessions()[0].is_paused
+    w.set_paused(True)  # closed: ignored
+    assert r.read_status().paused is False

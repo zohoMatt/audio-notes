@@ -30,7 +30,7 @@ def _root(
     pass
 
 
-from . import devices, inspect, run, setup  # noqa: E402
+from . import clean, devices, inspect, run, setup  # noqa: E402
 
-for _module in (devices, inspect, run, setup):
+for _module in (clean, devices, inspect, run, setup):
     _module.register(app)
