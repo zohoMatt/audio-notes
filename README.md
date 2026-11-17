@@ -167,3 +167,21 @@ uv run pytest
 ```
 
 Releasing: see [installer/RELEASING.md](installer/RELEASING.md).
+
+### Clean up after local testing
+
+Testing the installer and "Connect to Claude" leaves entries and backups behind. To remove them,
+quit Claude Desktop completely (also from the tray; it rewrites its config when it exits), then run
+from the repository:
+
+```powershell
+uv run audio-notes clean --dry-run     # show what would be removed
+uv run audio-notes clean --uninstall   # remove it, and uninstall the installed app silently
+```
+
+This removes the Audio Notes entry from every Claude Desktop config, the
+`claude_desktop_config.json.bak-*` backups made by our connect step, and the Claude Code
+registrations (user scope, every project's local scope, project `.mcp.json`). `--purge-data` also
+deletes the transcripts; `--keep-backups` keeps the backups; `-y` skips the confirmation. If Claude
+Desktop is still running, its config is skipped and the rest is cleaned. Restart Claude Code
+sessions afterwards.
