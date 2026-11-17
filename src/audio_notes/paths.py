@@ -51,6 +51,33 @@ def status_path() -> Path:
     return data_dir() / "status.json"
 
 
-def session_path_for(now: datetime) -> Path:
-    """JSONL path for a session starting at `now`; the file stem is the session id."""
-    return sessions_dir() / f"{now:%Y-%m-%d_%H-%M-%S}.jsonl"
+SESSION_STAMP = "%Y-%m-%d_%H-%M-%S"
+_STAMP_LEN = 19  # len("2026-11-16_14-30-00")
+
+
+def session_path_for(now: datetime, n: int = 1) -> Path:
+    """JSONL path for a session starting at `now`; the file stem is the session id.
+
+    `n` > 1 gives the n-th session started within the same second ("..._14-30-00-2"), so a quick
+    stop/start never reopens (and corrupts) the previous file."""
+    stem = f"{now:{SESSION_STAMP}}" + (f"-{n}" if n > 1 else "")
+    return sessions_dir() / f"{stem}.jsonl"
+
+
+def session_sort_key(session_id: str) -> tuple[str, int, str]:
+    """Chronological order of session ids, including same-second suffixes ("-2" < "-10")."""
+    stamp, rest = session_id[:_STAMP_LEN], session_id[_STAMP_LEN:]
+    n = int(rest[1:]) if rest[:1] == "-" and rest[1:].isdigit() else (1 if not rest else 0)
+    return (stamp, n, rest)
+
+
+def session_started_at(session_id: str) -> datetime | None:
+    try:
+        return datetime.strptime(session_id[:_STAMP_LEN], SESSION_STAMP)
+    except ValueError:
+        return None
+
+
+def is_valid_session_id(session_id: str) -> bool:
+    """Rejects ids that would escape the sessions folder (they come from URLs and tool calls)."""
+    return bool(session_id) and not any(c in session_id for c in '/\\:') and ".." not in session_id

@@ -114,7 +114,8 @@ audio-notes/
 │       │
 │       ├── capture/            # 抓音频
 │       │   ├── base.py         # AudioSource 抽象接口
-│       │   ├── win_wasapi.py   # MVP：loopback + 麦克风
+│       │   ├── win_wasapi.py   # MVP：loopback + 麦克风；看门狗发现设备丢失/默认设备切换
+│       │   ├── win_endpoints.py # 用 Core Audio 查当前默认设备 id（PortAudio 不会刷新设备表）
 │       │   └── mac_sck.py      # 第二阶段
 │       │
 │       ├── processing/         # 音频 → 语音段
@@ -128,8 +129,10 @@ audio-notes/
 │       │
 │       ├── store/              # 转写数据，各进程的唯一共享层
 │       │   ├── models.py       # Segment、SessionInfo
-│       │   ├── writer.py       # 守护进程：追加写 + status.json 心跳
-│       │   └── reader.py       # CLI / MCP / Web：cursor 读取、搜索、列会话
+│       │   ├── writer.py       # 守护进程：追加写会话 JSONL（同一秒内的新会话加 -2 后缀）
+│       │   ├── status.py       # status.json 心跳，归守护进程整个生命周期（空闲也在跳）
+│       │   ├── reader.py       # CLI / MCP / Web：按字节偏移增量读取、搜索、列会话
+│       │   └── follow.py       # 跟随最新会话（切换新会话时不漏行）+ 带会话 id 的 cursor
 │       │
 │       ├── tray/               # 托盘图标
 │       │   ├── app.py          # pystray 主循环、菜单
@@ -246,7 +249,7 @@ flowchart LR
 |---|---|
 | 外放时麦克风录到对方声音，同一句话出现 `them` 和 `me` 两条 | 建议戴耳机；之后在同一时间窗内对相似文本去重，丢弃 `me` 那条 |
 | loopback 在无声播放时可能不产生帧 | 时间戳用墙钟，不靠帧数累加 |
-| 默认音频设备切换（插拔耳机） | 监听设备变化或定期检查，自动重新绑定 |
+| 默认音频设备切换（插拔耳机） | 每路看门狗每秒检查流是否存活、Windows 默认设备 id 是否变化；一旦变化，Recorder 停掉所有流再重开（PortAudio 只有在没有打开的流时才会重新扫描设备）；重开失败就显示错误并每 3 秒重试 |
 | 两路并发时 CPU 占用叠加会议软件本身 | 单模型实例共用队列；M2 实测后选定 `base.en` 或 `small.en` |
 | 读者读到写了一半的最后一行 | 解析失败时丢弃末行，下次再读 |
 | 本地 Web 服务被其他网页探测（DNS rebinding） | 仅绑 127.0.0.1；校验 Host 头；不开 CORS；URL 带随机 token |

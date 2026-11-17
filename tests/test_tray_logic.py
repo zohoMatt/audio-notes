@@ -203,3 +203,28 @@ def test_quit_stops_recording():
     app = make_app(ctrl, on_quit=lambda: quit_called.append(1))
     app.quit()
     assert not ctrl.recording and quit_called == [1]
+
+
+def test_microphone_cannot_be_switched_while_recording():
+    rec = describe(TrayState.RECORDING)
+    assert not rec.mic_enabled and "after stopping" in rec.mic_label
+    assert describe(TrayState.IDLE).mic_enabled and describe(TrayState.IDLE).mic_label == "Microphone"
+    ctrl = FakeController()
+    app = make_app(ctrl)
+    app.toggle_recording()
+    app.toggle_mic()  # ignored while recording
+    assert ctrl.mic is True and not app.view().mic_enabled
+    app.toggle_recording()
+    app.toggle_mic()
+    assert ctrl.mic is False
+
+
+def test_error_while_recording_still_offers_stop():
+    v = describe(TrayState.ERROR, "device lost (retrying)", recording=True)
+    assert v.toggle_label == "Pause recording" and not v.mic_enabled
+    ctrl = FakeController()
+    ctrl.recording, ctrl.error = True, "device lost (retrying)"
+    app = make_app(ctrl)
+    assert app.view().state is TrayState.ERROR and app.view().toggle_label == "Pause recording"
+    app.toggle_recording()
+    assert ctrl.recording is False

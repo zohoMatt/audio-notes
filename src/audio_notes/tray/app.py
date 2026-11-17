@@ -59,8 +59,9 @@ class TrayApp:
     # ---- state -------------------------------------------------------------
     def view(self) -> TrayView:
         err = self.controller.last_error()
-        state = compute_state(self.controller.is_recording(), err, self.controller.is_downloading_model())
-        return describe(state, err)
+        recording = self.controller.is_recording()
+        state = compute_state(recording, err, self.controller.is_downloading_model())
+        return describe(state, err, recording)
 
     def refresh(self) -> None:
         """Re-read the controller; update icon, tooltip and menu when something changed."""
@@ -96,6 +97,8 @@ class TrayApp:
         self.refresh()
 
     def toggle_mic(self) -> None:
+        if self.controller.is_recording():  # the menu item is disabled then; guard anyway
+            return
         self.controller.set_mic_enabled(not self.controller.mic_enabled())
         self.refresh()
 
@@ -157,7 +160,7 @@ class TrayApp:
         return pystray.Menu(
             Item(lambda item: self.view().toggle_label, bg(self.toggle_recording),
                  enabled=lambda item: self.view().toggle_enabled),
-            Item("Microphone", bg(self.toggle_mic), checked=lambda item: self.controller.mic_enabled(),
+            Item(lambda item: self.view().mic_label, bg(self.toggle_mic), checked=lambda item: self.controller.mic_enabled(),
                  enabled=lambda item: self.view().mic_enabled),
             pystray.Menu.SEPARATOR,
             Item("Open panel", bg(self.open_panel), default=True),

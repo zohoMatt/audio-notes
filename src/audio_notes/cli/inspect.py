@@ -7,6 +7,7 @@ from typing import Optional
 
 import typer
 
+from audio_notes.store.follow import Follower
 from audio_notes.store.reader import StoreReader, fmt_segment
 
 
@@ -29,10 +30,11 @@ def register(app: typer.Typer) -> None:
     ) -> None:
         """Show a transcript."""
         reader = StoreReader()
-        segs, cursor = reader.read_segments(session)
-        if not segs and not follow and not any(s.id == session for s in reader.list_sessions()) and session:
+        if session and not any(s.id == session for s in reader.list_sessions()) and not follow:
             typer.echo(f"No such session: {session}", err=True)
             raise typer.Exit(1)
+        follower = Follower(reader, session)  # session None: follow the latest, switching to newer ones
+        segs = [v for kind, v in follower.poll() if kind == "segment"]
         if n > 0:
             segs = segs[-n:]
         for s in segs:
@@ -42,9 +44,11 @@ def register(app: typer.Typer) -> None:
         try:
             while True:
                 time.sleep(0.5)
-                new, cursor = reader.read_segments(session, cursor)
-                for s in new:
-                    typer.echo(fmt_segment(s))
+                for kind, value in follower.poll():
+                    if kind == "session":
+                        typer.echo(f"--- new session {value} ---")
+                    else:
+                        typer.echo(fmt_segment(value))
         except KeyboardInterrupt:
             pass
 

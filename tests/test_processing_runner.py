@@ -208,3 +208,64 @@ def test_stop_without_start_and_double_stop():
     r.start()
     r.stop()
     r.stop()
+
+
+class RestartableSource(AudioSource):
+    """Counts starts/stops; `lose()` reports the device as lost like the WASAPI watchdog does."""
+
+    def __init__(self, speaker, fail_starts=0):
+        self.speaker = speaker
+        self.starts = self.stops = 0
+        self.fail_starts = fail_starts
+        self.running = False
+
+    def start(self, on_chunk, origin):
+        self.starts += 1
+        if self.starts <= self.fail_starts:
+            raise RuntimeError(f"no {self.speaker} device")
+        self.running = True
+
+    def stop(self):
+        self.stops += 1
+        self.running = False
+
+    def lose(self):
+        self.on_lost(RuntimeError("device gone"))
+
+
+def test_start_reports_failures_and_restart_brings_all_sources_back():
+    them, me = RestartableSource("them"), RestartableSource("me", fail_starts=1)
+    lost = []
+    r = PipelineRunner([them, me], FakeTranscriber(), MemorySink(), on_source_lost=lambda s, e: lost.append(s))
+    failed = r.start()
+    assert set(failed) == {"me"} and them.running and not me.running
+    them.lose()
+    assert lost == ["them"]
+    assert r.restart_sources() == {}
+    assert them.starts == 2 and me.starts == 2 and them.running and me.running
+    assert them.stops == 1 and me.stops == 1  # everything went down before anything came back up
+    r.stop()
+    assert r.restart_sources() == {}  # no-op once stopped
+    them.lose()
+    assert lost == ["them"]  # a lost report after stop is ignored
+
+
+def test_resampler_tail_is_analysed_before_vad_flush():
+    calls = []
+
+    class Rs:
+        def flush(self):
+            calls.append("rs.flush")
+            return np.ones(10, dtype=np.float32)
+
+    class Vad:
+        def feed(self, x):
+            calls.append("vad.feed")
+            return []
+
+        def flush(self):
+            calls.append("vad.flush")
+            return []
+
+    PipelineRunner._finish(Rs(), Vad())
+    assert calls == ["rs.flush", "vad.feed", "vad.flush"]

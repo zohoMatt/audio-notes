@@ -18,7 +18,7 @@ class RecorderController(Protocol):
     def mic_enabled(self) -> bool: ...
 
     def set_mic_enabled(self, enabled: bool) -> None:
-        """Takes effect for the running session if possible, otherwise from the next start."""
+        """Applies from the next `start()`. The tray only offers it while not recording."""
 
     def last_error(self) -> str | None:
         """Short human-readable message for the current failure, or None when healthy."""

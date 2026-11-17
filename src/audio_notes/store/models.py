@@ -1,4 +1,4 @@
-"""Shared data model and store contracts (frozen; see DEV_TRACKS.md before changing)."""
+"""Shared data model and store contracts."""
 
 from __future__ import annotations
 
@@ -58,6 +58,9 @@ class TranscriptReader(Protocol):
 
     def list_sessions(self) -> list[SessionInfo]:
         """Newest first."""
+
+    def latest_session_id(self) -> str | None:
+        """Id of the newest session (cheap: no file is parsed), or None when there is none."""
 
     def read_segments(
         self,

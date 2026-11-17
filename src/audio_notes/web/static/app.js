@@ -80,7 +80,7 @@
       const li = document.createElement("li");
       const key = i === 0 ? "live" : s.id;
       if (selected === key) li.className = "sel";
-      li.textContent = s.id.replace("_", " ").replace(/-(\d\d)-(\d\d)$/, ":$1:$2");
+      li.textContent = s.id.replace(/_(\d\d)-(\d\d)-(\d\d)/, " $1:$2:$3");
       if (s.is_active) {
         const l = document.createElement("span");
         l.className = "live";

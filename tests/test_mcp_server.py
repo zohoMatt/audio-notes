@@ -57,15 +57,40 @@ def test_tools_listed_and_get_transcript(data_dir):
         "[00:05] Me: hello there",
         "[01:05] Them: Budget numbers",
         "[02:05] Me: ok",
-        "cursor: 3",
+        "cursor: 2026-01-01_10-00-00:3",
     ]
-    _, text = _call(data_dir, "get_transcript", {"since_cursor": 3})
-    assert text == "(no new transcript)\ncursor: 3"
-    _, text = _call(data_dir, "get_transcript", {"since_cursor": 1})
-    assert "hello there" not in text and text.endswith("cursor: 3")
+    _, text = _call(data_dir, "get_transcript", {"since_cursor": "2026-01-01_10-00-00:3"})
+    assert text == "(no new transcript)\ncursor: 2026-01-01_10-00-00:3"
+    _, text = _call(data_dir, "get_transcript", {"since_cursor": "2026-01-01_10-00-00:1"})
+    assert "hello there" not in text and text.endswith("cursor: 2026-01-01_10-00-00:3")
+    _, text = _call(data_dir, "get_transcript", {"since_cursor": 1})  # bare seq from older clients
+    assert "hello there" not in text and "Budget" in text
     _, text = _call(data_dir, "get_transcript", {"last_n_minutes": 1.5})
     assert "hello there" not in text and "Budget" in text
     w.close()
+
+
+def test_get_transcript_cursor_survives_a_new_session(data_dir):
+    w = _fill()
+    w.close()
+    w2 = SessionWriter(datetime(2026, 1, 1, 11))
+    w2.append(1, 2, "them", "new one")
+    w2.append(3, 4, "me", "new two")
+    # A cursor in the middle of the old session: its rest comes first, then the whole new session
+    # (with a bare seq cursor of 2, the new session's first two lines would have been skipped).
+    _, text = _call(data_dir, "get_transcript", {"since_cursor": "2026-01-01_10-00-00:2"})
+    lines = text.splitlines()
+    assert lines == [
+        "(rest of session 2026-01-01_10-00-00)",
+        "[02:05] Me: ok",
+        "(new session 2026-01-01_11-00-00 started)",
+        "[00:01] Them: new one",
+        "[00:03] Me: new two",
+        "cursor: 2026-01-01_11-00-00:2",
+    ]
+    _, text = _call(data_dir, "get_transcript", {"since_cursor": "garbage:x"})
+    assert "bad cursor" in text
+    w2.close()
 
 
 def test_search_sessions_status(data_dir):
@@ -86,6 +111,14 @@ def test_empty_store(data_dir):
     assert text == "(no new transcript)\ncursor: 0"
     _, text = _call(data_dir, "get_status")
     assert "not running" in text
+
+
+def test_status_with_an_idle_daemon(data_dir):
+    from audio_notes.store.status import StatusPublisher
+
+    with StatusPublisher().start():  # the tray: alive, no session yet
+        _, text = _call(data_dir, "get_status")
+    assert "Recorder running; recording=no" in text
 
 
 def test_real_stdio_process_does_not_import_heavy_deps(data_dir, tmp_path):

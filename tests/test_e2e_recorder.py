@@ -3,6 +3,8 @@
 Real FileSource -> real resampler/VAD -> fake transcriber -> real SessionWriter -> real StoreReader.
 """
 
+import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -156,3 +158,94 @@ def test_stop_is_idempotent_and_safe_before_start():
     rec.start()
     rec.stop()
     rec.stop()
+
+
+class BlockingTranscriber(FakeTranscriber):
+    """`load()` blocks until released, like a first-run model download."""
+
+    def __init__(self):
+        self.release = threading.Event()
+        self.loading = threading.Event()
+
+    def load(self):
+        self.loading.set()
+        self.release.wait(10)
+
+
+def test_stop_does_not_wait_for_a_model_download_and_cancels_the_start():
+    t = BlockingTranscriber()
+    rec = Recorder(source_factory=lambda mic: _files(), transcriber=t, model_cached=lambda n: False)
+    th = threading.Thread(target=rec.start)
+    th.start()
+    assert t.loading.wait(5)
+    assert rec.is_downloading_model()
+    t0 = time.monotonic()
+    rec.stop()  # used to block on the recorder lock until the download finished
+    rec.start()  # a second start while one is loading is a no-op, not a second load
+    assert time.monotonic() - t0 < 1.0
+    t.release.set()
+    th.join(5)
+    assert not rec.is_recording() and rec.last_error() is None
+    assert StoreReader().list_sessions() == []  # the cancelled start opened no session
+
+
+class LosableSource(AudioSource):
+    def __init__(self, speaker, broken_after=None):
+        self.speaker = speaker
+        self.starts = 0
+        self.broken = False
+
+    def start(self, on_chunk, origin):
+        self.starts += 1
+        if self.broken:
+            raise RuntimeError(f"no {self.speaker} device")
+
+    def stop(self):
+        pass
+
+    def lose(self):
+        self.on_lost(RuntimeError("default device changed"))
+
+
+def _wait(cond, timeout=5.0):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if cond():
+            return True
+        time.sleep(0.01)
+    return False
+
+
+def test_lost_device_is_rebound_and_a_failed_rebind_is_reported_then_retried():
+    them = LosableSource("them")
+    rec = Recorder(source_factory=lambda mic: [them], transcriber=FakeTranscriber(),
+                   recover_delay=0.01, retry_interval=0.05)
+    rec.start()
+    them.lose()
+    assert _wait(lambda: them.starts == 2)  # re-opened on the (new) default device
+    assert rec.is_recording() and rec.last_error() is None
+
+    them.broken = True
+    them.lose()
+    assert _wait(lambda: "retrying" in (rec.last_error() or ""))
+    assert rec.is_recording()  # still a session; the tray shows the error with a Stop item
+    n = them.starts
+    assert _wait(lambda: them.starts > n)  # keeps retrying
+    them.broken = False
+    assert _wait(lambda: rec.last_error() is None)
+    rec.stop()
+    assert not rec.is_recording()
+
+
+def test_stop_during_failed_rebind_clears_the_capture_error():
+    them = LosableSource("them")
+    rec = Recorder(source_factory=lambda mic: [them], transcriber=FakeTranscriber(),
+                   recover_delay=0.01, retry_interval=10)
+    rec.start()
+    them.broken = True
+    them.lose()
+    assert _wait(lambda: rec.last_error() is not None)
+    t0 = time.monotonic()
+    rec.stop()
+    assert time.monotonic() - t0 < 2  # does not sit out the retry interval
+    assert rec.last_error() is None and not rec.is_recording()

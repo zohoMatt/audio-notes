@@ -15,10 +15,12 @@ from typing import Any, Callable
 import numpy as np
 
 from .base import AudioChunk, AudioSource, Speaker
+from .win_endpoints import CAPTURE, RENDER, default_endpoint_id
 
 log = logging.getLogger(__name__)
 
 CHUNK_MS = 50
+WATCH_INTERVAL_S = 1.0
 
 
 def _import_pyaudio() -> Any:
@@ -76,6 +78,7 @@ def _summ(d: dict[str, Any], is_default: bool) -> dict[str, Any]:
 
 class _WasapiSource(AudioSource):
     speaker: Speaker
+    _flow: int  # win_endpoints.RENDER / CAPTURE: which Windows default this source follows
 
     def __init__(self) -> None:
         self._p: Any = None
@@ -93,7 +96,10 @@ class _WasapiSource(AudioSource):
         with self._lock:
             if self._stream is not None:
                 raise RuntimeError("source already started")
-            self._stopping.clear()
+            # A fresh event per start: a watchdog of a previous start keeps its own (already set)
+            # event, so a quick stop/start can never leave two watchdogs on one stream.
+            stopping = self._stopping = threading.Event()
+            default_id = default_endpoint_id(self._flow)
             p = pyaudio.PyAudio()
             try:
                 dev = self._pick_device(p)
@@ -103,7 +109,7 @@ class _WasapiSource(AudioSource):
                 frames = max(1, rate * CHUNK_MS // 1000)
 
                 def cb(in_data, frame_count, time_info, status):  # noqa: ANN001
-                    if in_data and not self._stopping.is_set():
+                    if in_data and not stopping.is_set():
                         try:
                             x = np.frombuffer(in_data, dtype=np.float32)
                             if channels > 1:
@@ -131,22 +137,36 @@ class _WasapiSource(AudioSource):
             self._p, self._stream = p, stream
             self.device_name = dev["name"]
             log.info("%s capture started on %r (%d Hz, %d ch)", self.speaker, dev["name"], rate, channels)
-            self._watchdog = threading.Thread(target=self._watch, daemon=True, name=f"wasapi-watch-{self.speaker}")
+            self._watchdog = threading.Thread(
+                target=self._watch, args=(stream, stopping, default_id), daemon=True,
+                name=f"wasapi-watch-{self.speaker}",
+            )
             self._watchdog.start()
 
-    def _watch(self) -> None:
-        # A removed / switched device makes PortAudio deactivate the stream. Log and stop
-        # just this source instead of crashing the process.
-        while not self._stopping.wait(0.5):
-            stream = self._stream
+    def _watch(self, stream: Any, stopping: threading.Event, default_id: str | None) -> None:
+        """Report the source as lost when its device goes away (PortAudio deactivates the
+        stream) or when Windows switches the default device this source follows."""
+        while not stopping.wait(WATCH_INTERVAL_S):
             try:
-                alive = stream is not None and stream.is_active()
+                alive = stream.is_active()
             except Exception:
                 alive = False
             if not alive:
-                log.error("%s: audio device lost or stream stopped; stopping this source", self.speaker)
-                threading.Thread(target=self.stop, daemon=True).start()
+                reason = "audio device lost or stream stopped"
+            elif default_id is not None and default_endpoint_id(self._flow) not in (default_id, None):
+                reason = "the default audio device changed"
+            else:
+                continue
+            if stopping.is_set():
                 return
+            handler = self.on_lost
+            if handler is None:
+                log.error("%s: %s; stopping this source", self.speaker, reason)
+                threading.Thread(target=self.stop, daemon=True).start()
+            else:
+                log.warning("%s: %s", self.speaker, reason)
+                handler(RuntimeError(reason))
+            return
 
     def stop(self) -> None:
         self._stopping.set()
@@ -173,6 +193,7 @@ class LoopbackSource(_WasapiSource):
     """System audio (default output device, WASAPI loopback) -> speaker "them"."""
 
     speaker: Speaker = "them"
+    _flow = RENDER
 
     def _pick_device(self, p: Any) -> dict[str, Any]:
         return p.get_default_wasapi_loopback()
@@ -182,6 +203,7 @@ class MicSource(_WasapiSource):
     """Default input device -> speaker "me"."""
 
     speaker: Speaker = "me"
+    _flow = CAPTURE
 
     def _pick_device(self, p: Any) -> dict[str, Any]:
         return p.get_default_input_device_info()

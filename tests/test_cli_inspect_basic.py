@@ -146,3 +146,24 @@ def test_setup_write_bad_json_leaves_file(tmp_path):
     cfg.write_text("{ not json")
     r = runner.invoke(app, ["setup", "claude", "--write"], input="y\n")
     assert r.exit_code == 1 and cfg.read_text() == "{ not json"
+
+
+def test_show_follow_moves_on_to_a_new_session(monkeypatch):
+    w = _session(1)
+    calls = {"n": 0}
+    later = []
+
+    def fake_sleep(_):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            w.close()
+            w2 = _session(2, datetime(2026, 1, 1, 11))  # seqs 1 and 2, below the old cursor + 1
+            later.append(w2)
+        else:
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr("audio_notes.cli.inspect.time.sleep", fake_sleep)
+    r = runner.invoke(app, ["show", "-f"])
+    assert "--- new session 2026-01-01_11-00-00 ---" in r.output
+    assert r.output.count("line 0") == 2 and "line 1" in r.output
+    later[0].close()

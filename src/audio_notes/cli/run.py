@@ -45,11 +45,15 @@ def register(app: typer.Typer) -> None:
         from audio_notes.config import Config
         from audio_notes.recorder import Recorder
         from audio_notes.store.reader import StoreReader
+        from audio_notes.store.status import StatusPublisher
         from audio_notes.tray.app import TrayApp
         from audio_notes.web.server import PanelServer
 
         cfg = Config.from_env()
-        recorder = Recorder(cfg)
+        # Heartbeat for the whole life of the tray, so an idle tray reads as running (panel,
+        # `status`, MCP get_status) rather than offline.
+        status = StatusPublisher()
+        recorder = Recorder(cfg, status=status)
         panel = PanelServer(StoreReader(), cfg.web_port, controller=recorder)
         try:
             panel.start()
@@ -60,11 +64,14 @@ def register(app: typer.Typer) -> None:
                 err=True,
             )
             raise typer.Exit(1)
+        # Only once the panel port is ours: a second instance must not overwrite the first's status.
+        status.start()
         try:
             ran = TrayApp(recorder, panel.url).run()
         finally:
             recorder.stop()
             panel.stop()
+            status.close()
         if not ran:
             typer.echo("Recording notice declined; nothing was started.")
 

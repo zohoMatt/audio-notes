@@ -6,7 +6,10 @@ from datetime import datetime
 import pytest
 
 from audio_notes import paths
+from audio_notes.store.follow import Follower, format_cursor, parse_cursor
+from audio_notes.store.models import Segment
 from audio_notes.store.reader import StoreReader
+from audio_notes.store.status import StatusPublisher
 from audio_notes.store.writer import SessionWriter
 
 
@@ -150,3 +153,99 @@ def test_concurrent_writer_and_reader():
     w.close()
     assert not errors
     assert got == list(range(1, total + 1))
+
+
+def test_same_second_sessions_get_their_own_file():
+    at = datetime(2026, 1, 1, 10)
+    w1 = SessionWriter(at)
+    w1.append(0, 1, "me", "first")
+    w1.close()
+    w2 = SessionWriter(at)  # e.g. stop + start within one second
+    w2.append(0, 1, "me", "second")
+    w2.close()
+    assert w1.path != w2.path and w2.session_id == "2026-01-01_10-00-00-2"
+    r = StoreReader()
+    assert [s.id for s in r.list_sessions()] == ["2026-01-01_10-00-00-2", "2026-01-01_10-00-00"]
+    assert r.latest_session_id() == "2026-01-01_10-00-00-2"
+    assert r.list_sessions()[0].started_at == "2026-01-01T10:00:00"
+    assert [s.seq for s in r.read_segments(w1.session_id)[0]] == [1]  # no duplicated seq
+    assert paths.session_sort_key("2026-01-01_10-00-00-10") > paths.session_sort_key("2026-01-01_10-00-00-9")
+
+
+def test_one_reader_picks_up_appends_incrementally():
+    w = SessionWriter(datetime(2026, 1, 1))
+    r = StoreReader()
+    w.append(0, 1, "me", "a")
+    assert [s.text for s in r.read_segments()[0]] == ["a"]
+    assert r.list_sessions()[0].segment_count == 1
+    w.append(1, 2, "me", "b")
+    assert [s.text for s in r.read_segments()[0]] == ["a", "b"]
+    assert r.list_sessions()[0].segment_count == 2
+    w.close()
+    # a file replaced by a shorter one (not something the writer does) is re-read from scratch
+    w.path.write_text(Segment(1, 0, 1, "them", "z").to_json_line() + "\n", encoding="utf-8")
+    assert [s.text for s in r.read_segments()[0]] == ["z"]
+    assert r.list_sessions()[0].segment_count == 1
+
+
+def test_session_ids_cannot_escape_the_sessions_folder(data_dir):
+    (data_dir / "secret.jsonl").write_text(Segment(1, 0, 1, "me", "x").to_json_line() + "\n")
+    SessionWriter(datetime(2026, 1, 1)).close()
+    r = StoreReader()
+    assert r.read_segments("../secret") == ([], 0)
+    assert r.read_segments(r"..\secret") == ([], 0)
+
+
+def test_idle_daemon_publisher_is_alive_but_not_recording():
+    r = StoreReader()
+    pub = StatusPublisher(heartbeat_interval=0.05)
+    pub.update(recording=True)  # nothing is written before start()
+    assert r.read_status().alive is False
+    pub.update(recording=False)
+    pub.start()
+    st = r.read_status()
+    assert st.alive and not st.recording and st.session_id is None
+    w = SessionWriter(datetime(2026, 1, 1), status=pub)
+    w.append(0, 1, "me", "x")
+    st = r.read_status()
+    assert st.recording and st.session_id == w.session_id and st.segments == 1
+    w.close()
+    time.sleep(0.2)
+    st = r.read_status()
+    assert st.alive and not st.recording  # the daemon keeps beating after the session ends
+    pub.close()
+    assert r.read_status().recording is False
+
+
+def test_follower_switches_to_a_newer_session_after_finishing_the_old_one():
+    w1 = SessionWriter(datetime(2026, 1, 1, 10))
+    w1.append(0, 1, "me", "old1")
+    f = Follower(StoreReader())
+    assert [(k, getattr(v, "text", v)) for k, v in f.poll()] == [("segment", "old1")]
+    w1.append(1, 2, "me", "old2")
+    w2 = SessionWriter(datetime(2026, 1, 1, 11))
+    w2.append(0, 1, "them", "new1")
+    events = [(k, getattr(v, "text", v)) for k, v in f.poll()]
+    assert events == [("segment", "old2"), ("session", "2026-01-01_11-00-00"), ("segment", "new1")]
+    assert f.poll() == []
+    pinned = Follower(StoreReader(), "2026-01-01_10-00-00", cursor=1)  # an explicit session never switches
+    assert [getattr(v, "text", v) for _, v in pinned.poll()] == ["old2"]
+    w1.close()
+    w2.close()
+
+
+@pytest.mark.parametrize(
+    "token,expected",
+    [(None, (None, 0)), ("", (None, 0)), (5, (None, 5)), ("7", (None, 7)),
+     ("2026-01-01_10-00-00:3", ("2026-01-01_10-00-00", 3)), ("2026-01-01_10-00-00-2:0", ("2026-01-01_10-00-00-2", 0))],
+)
+def test_cursor_tokens(token, expected):
+    assert parse_cursor(token) == expected
+    sid, seq = expected
+    if sid:
+        assert format_cursor(sid, seq) == token
+
+
+def test_bad_cursor_token():
+    with pytest.raises(ValueError):
+        parse_cursor("abc:x")

@@ -28,6 +28,7 @@ from starlette.responses import JSONResponse, PlainTextResponse, Response, Strea
 from starlette.routing import Route
 from starlette.types import ASGIApp, Receive, Scope, Send
 
+from audio_notes.store.follow import Follower
 from audio_notes.store.models import TranscriptReader
 
 TOKEN_HEADER = "x-audio-notes-token"
@@ -210,29 +211,18 @@ def create_app(
             return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
         async def gen() -> AsyncIterator[str]:
-            nonlocal cursor
-            current = session
-            if session is None:
-                infos = await asyncio.to_thread(reader.list_sessions)
-                current = infos[0].id if infos else None
-            yield sse("session", {"id": current})
+            follower = await asyncio.to_thread(Follower, reader, session, cursor)
+            yield sse("session", {"id": follower.current})
             started = last_sent = time.monotonic()
             while True:
                 if await request.is_disconnected():
                     return
-                if session is None:  # follow-latest: switch when a newer session appears
-                    infos = await asyncio.to_thread(reader.list_sessions)
-                    latest = infos[0].id if infos else None
-                    if latest != current:
-                        current, cursor = latest, 0
-                        yield sse("session", {"id": current})
-                if current is not None:
-                    segs, new_cursor = await asyncio.to_thread(reader.read_segments, current, cursor)
-                    for seg in segs:
-                        yield sse("segment", asdict(seg))
-                    if segs:
-                        cursor = new_cursor
-                        last_sent = time.monotonic()
+                for kind, value in await asyncio.to_thread(follower.poll):
+                    if kind == "session":
+                        yield sse("session", {"id": value})
+                    else:
+                        yield sse("segment", asdict(value))
+                    last_sent = time.monotonic()
                 if time.monotonic() - last_sent > SSE_KEEPALIVE_S:
                     yield ": keepalive\n\n"
                     last_sent = time.monotonic()

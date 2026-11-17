@@ -11,16 +11,20 @@ import threading
 from typing import Callable, Sequence
 
 from audio_notes.asr.base import Transcriber
-from audio_notes.capture.base import AudioChunk, AudioSource, Speaker
+from audio_notes.capture.base import AudioSource, Speaker
 from audio_notes.config import Config
-from audio_notes.processing.runner import PipelineRunner
+from audio_notes.processing.runner import PipelineRunner, StartFailures
 from audio_notes.processing.vad import VadSegmenter
+from audio_notes.store.status import StatusPublisher
 from audio_notes.store.writer import SessionWriter
 
 log = logging.getLogger(__name__)
 
 # Builds the audio sources for a session; the argument says whether the microphone is wanted.
 SourceFactory = Callable[[bool], Sequence[AudioSource]]
+
+RECOVER_DELAY_S = 1.0  # after a device change, let Windows settle before re-opening streams
+RETRY_INTERVAL_S = 3.0  # while system audio cannot be re-opened, try again this often
 
 
 def default_sources(mic: bool) -> list[AudioSource]:
@@ -44,23 +48,28 @@ def model_is_cached(model: str) -> bool:
         return False
 
 
-class _Guarded(AudioSource):
-    """Reports a failed start to the recorder, then re-raises so the runner still logs it."""
+def capture_problem(failed: StartFailures, n_sources: int) -> str | None:
+    """Why a session cannot count as recording, or None.
 
-    def __init__(self, inner: AudioSource, on_fail: Callable[[Speaker, Exception], None]) -> None:
-        self._inner = inner
-        self._on_fail = on_fail
-        self.speaker = inner.speaker
+    System audio is the point of the tool: without it, or with no source at all, a "recording"
+    would be misleading. A missing microphone only degrades the session."""
+    if "them" in failed or (failed and len(failed) >= n_sources):
+        bad = failed.get("them") or next(iter(failed.values()))
+        return f"Cannot capture audio: {_short(bad)}"
+    return None
 
-    def start(self, on_chunk: Callable[[AudioChunk], None], origin: float) -> None:
-        try:
-            self._inner.start(on_chunk, origin)
-        except Exception as e:
-            self._on_fail(self.speaker, e)
-            raise
 
-    def stop(self) -> None:
-        self._inner.stop()
+class _Session:
+    """One running recording: its pipeline, its file and its device-recovery thread."""
+
+    def __init__(self, runner: PipelineRunner, writer: SessionWriter, n_sources: int) -> None:
+        self.runner = runner
+        self.writer = writer
+        self.n_sources = n_sources
+        self.lost = threading.Event()  # a source reported its device gone / switched
+        self.done = threading.Event()  # the session is stopping
+        self.recovery: threading.Thread | None = None
+        self.degraded = False  # the recorder's error currently comes from failed re-binding
 
 
 class Recorder:
@@ -72,47 +81,70 @@ class Recorder:
         transcriber: Transcriber | None = None,
         mic_enabled: bool = True,
         model_cached: Callable[[str], bool] = model_is_cached,
+        status: StatusPublisher | None = None,
+        recover_delay: float = RECOVER_DELAY_S,
+        retry_interval: float = RETRY_INTERVAL_S,
     ) -> None:
         self._config = config or Config.from_env()
         self._source_factory = source_factory
         self._transcriber = transcriber
         self._mic = mic_enabled
         self._model_cached = model_cached
+        self._status = status
+        self._recover_delay = recover_delay
+        self._retry_interval = retry_interval
         self._lock = threading.Lock()
-        self._recording = False
+        self._starting = False
+        self._cancel_start = False
         self._downloading = False
         self._error: str | None = None
-        self._failed: dict[str, Exception] = {}
-        self._runner: PipelineRunner | None = None
-        self._writer: SessionWriter | None = None
+        self._session: _Session | None = None
 
     # -- RecorderController ------------------------------------------------
 
     def start(self) -> None:
         with self._lock:
-            if self._recording:
+            if self._session is not None or self._starting:
                 return
+            self._starting = True
+            self._cancel_start = False
             self._error = None
-            self._failed = {}
-            try:
-                self._start_locked()
-            except Exception as e:
-                self._error = _short(e)
-                log.exception("could not start recording")
-                raise
+        try:
+            # Outside the lock: the first run downloads the model, which can take minutes, and
+            # stop() / quit must not wait for that.
+            transcriber = self._transcriber_ready()
+            with self._lock:
+                if self._cancel_start:
+                    log.info("start cancelled while the model was loading")
+                    return
+                self._session = self._open_session(transcriber)
+        except Exception as e:
+            self._error = _short(e)
+            log.exception("could not start recording")
+            raise
+        finally:
+            with self._lock:
+                self._starting = False
 
     def stop(self) -> None:
         with self._lock:
-            runner, writer = self._runner, self._writer
-            self._runner = self._writer = None
-            self._recording = False  # the UI shows "idle" at once; the drain below can take seconds
-            if runner is not None:
-                runner.stop()
-            if writer is not None:
-                writer.close()
+            if self._starting:
+                self._cancel_start = True  # a start still loading the model gives up when done
+            session, self._session = self._session, None
+            if session is None:
+                return
+            # The UI shows "idle" at once (is_recording() is already False); draining below can
+            # take seconds.
+            session.done.set()
+            if session.recovery is not None:
+                session.recovery.join()
+            session.runner.stop()
+            session.writer.close()
+            if session.degraded:
+                self._error = None  # it described this session's capture, which is over
 
     def is_recording(self) -> bool:
-        return self._recording
+        return self._session is not None
 
     def mic_enabled(self) -> bool:
         return self._mic
@@ -131,13 +163,13 @@ class Recorder:
 
     @property
     def session_id(self) -> str | None:
-        writer = self._writer
-        return writer.session_id if writer is not None else None
+        session = self._session
+        return session.writer.session_id if session is not None else None
 
     @property
     def session_path(self):
-        writer = self._writer
-        return writer.path if writer is not None else None
+        session = self._session
+        return session.writer.path if session is not None else None
 
     # -- internals ---------------------------------------------------------
 
@@ -156,38 +188,70 @@ class Recorder:
                 self._downloading = False
         return self._transcriber
 
-    def _source_failed(self, speaker: Speaker, exc: Exception) -> None:
-        self._failed[speaker] = exc
-
-    def _start_locked(self) -> None:
-        transcriber = self._transcriber_ready()
-        sources = [_Guarded(s, self._source_failed) for s in self._source_factory(self._mic)]
-        writer = SessionWriter()
+    def _open_session(self, transcriber: Transcriber) -> _Session:
+        sources = list(self._source_factory(self._mic))
+        writer = SessionWriter(status=self._status)
         cfg = self._config
+        holder: list[_Session] = []
+
+        def on_lost(speaker: Speaker, exc: Exception) -> None:
+            log.warning("%s capture lost (%s); re-binding to the current default devices", speaker, exc)
+            if holder:
+                holder[0].lost.set()
+
         runner = PipelineRunner(
             sources,
             transcriber,
             writer,
-            vad_factory=lambda: VadSegmenter(
-                silence_ms=cfg.vad_silence_ms, max_s=cfg.vad_max_s
-            ),
+            vad_factory=lambda: VadSegmenter(silence_ms=cfg.vad_silence_ms, max_s=cfg.vad_max_s),
+            on_source_lost=on_lost,
         )
+        session = _Session(runner, writer, len(sources))
+        holder.append(session)
         try:
-            runner.start()
-            # The system-audio side is the point of the tool: without it, or with no source
-            # at all, a "recording" would be misleading, so that is a hard failure. A missing
-            # microphone only degrades the session.
-            if "them" in self._failed or (self._failed and len(self._failed) >= len(sources)):
-                bad = self._failed.get("them") or next(iter(self._failed.values()))
-                raise RuntimeError(f"Cannot capture audio: {_short(bad)}")
-            for speaker, exc in self._failed.items():
+            failed = runner.start()
+            problem = capture_problem(failed, len(sources))
+            if problem:
+                raise RuntimeError(problem)
+            for speaker, exc in failed.items():
                 log.warning("%s source unavailable, recording without it: %s", speaker, exc)
         except Exception:
             runner.stop()
             writer.close()
             raise
-        self._runner, self._writer = runner, writer
-        self._recording = True
+        session.recovery = threading.Thread(
+            target=self._recover, args=(session,), name="capture-recovery", daemon=True
+        )
+        session.recovery.start()
+        return session
+
+    def _recover(self, s: _Session) -> None:
+        """Re-open the sources whenever one reports its device lost or switched; while system
+        audio cannot be opened, show the error and keep retrying until it can or the session ends."""
+        while not s.done.is_set():
+            if not s.lost.wait(0.2):
+                continue
+            if s.done.wait(self._recover_delay):
+                return
+            s.lost.clear()
+            try:
+                failed = s.runner.restart_sources()
+            except Exception as e:  # noqa: BLE001
+                failed = {"them": e}
+            problem = capture_problem(failed, s.n_sources)
+            if problem:
+                s.degraded = True
+                self._error = f"{problem} (retrying)"
+                log.warning("re-binding failed: %s; retrying in %.0f s", problem, self._retry_interval)
+                if s.done.wait(self._retry_interval):
+                    return
+                s.lost.set()
+                continue
+            if s.degraded:
+                s.degraded, self._error = False, None
+            for speaker, exc in failed.items():
+                log.warning("%s source unavailable after re-binding: %s", speaker, exc)
+            log.info("audio capture re-bound")
 
 
 def _short(exc: BaseException) -> str:
