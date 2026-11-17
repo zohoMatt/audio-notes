@@ -94,7 +94,7 @@ def test_setup_write_yes_skips_confirmation(tmp_path):
     cfg.parent.mkdir()
     r = runner.invoke(app, ["setup", "claude", "--write", "--yes"])  # no input: must not prompt
     assert r.exit_code == 0, r.output
-    assert "audio-notes" in json.loads(cfg.read_text())["mcpServers"]
+    assert "Audio Notes" in json.loads(cfg.read_text())["mcpServers"]
 
 
 def test_setup_write_claude_not_installed(tmp_path):
@@ -127,12 +127,14 @@ def test_server_command_frozen_prefers_console_sibling(tmp_path, monkeypatch):
 def test_setup_write_merges_and_backs_up(tmp_path):
     cfg = tmp_path / "claude" / "cfg.json"
     cfg.parent.mkdir()
-    cfg.write_text(json.dumps({"theme": "x", "mcpServers": {"other": {"command": "o"}}}))
+    cfg.write_text(json.dumps({"theme": "x", "mcpServers": {
+        "other": {"command": "o"}, "audio-notes": {"command": "old"}}}))
     r = runner.invoke(app, ["setup", "claude", "--write"], input="y\n")
     assert r.exit_code == 0, r.output
     data = json.loads(cfg.read_text())
     assert data["theme"] == "x" and data["mcpServers"]["other"] == {"command": "o"}
-    entry = data["mcpServers"]["audio-notes"]
+    assert "audio-notes" not in data["mcpServers"]  # legacy key replaced, not duplicated
+    entry = data["mcpServers"]["Audio Notes"]
     assert entry["args"][-1] == "mcp" and Path(entry["command"]).is_absolute()
     backups = list(cfg.parent.glob("cfg.json.bak-*"))
     assert len(backups) == 1 and "other" in backups[0].read_text()

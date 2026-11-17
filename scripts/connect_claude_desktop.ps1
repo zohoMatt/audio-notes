@@ -9,7 +9,7 @@ Copy-Item $p "$p.bak-audio-notes" -Force
 $t = [IO.File]::ReadAllText($p)
 if ($t -match '"mcpServers"') { throw "mcpServers already present in $p; edit it by hand." }
 $esc = $Exe.Replace('\', '\\')
-$ins = "{`n  `"mcpServers`": {`n    `"audio-notes`": {`n      `"command`": `"$esc`",`n      `"args`": [`"mcp`"]`n    }`n  },"
+$ins = "{`n  `"mcpServers`": {`n    `"Audio Notes`": {`n      `"command`": `"$esc`",`n      `"args`": [`"mcp`"]`n    }`n  },"
 $t = $ins + $t.Substring($t.IndexOf('{') + 1)
 [IO.File]::WriteAllText($p, $t, (New-Object Text.UTF8Encoding $false))
 Get-Content $p -Raw | ConvertFrom-Json | Out-Null   # throws if the JSON is broken

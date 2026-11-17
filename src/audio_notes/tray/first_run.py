@@ -7,9 +7,9 @@ from typing import Callable
 
 from audio_notes import paths
 
-TITLE = "audio-notes"
+TITLE = "Audio Notes"
 NOTICE = (
-    "audio-notes records system audio and your microphone and transcribes it on this computer.\n\n"
+    "Audio Notes records system audio and your microphone and transcribes it on this computer.\n\n"
     "Recording other people's voices may require their consent under local law. Before recording "
     "a meeting or call, make sure this is lawful where you are and tell the participants.\n\n"
     "Do you understand and want to continue?"

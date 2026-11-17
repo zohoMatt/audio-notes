@@ -23,7 +23,7 @@ _INSTRUCTIONS = (
 
 def create_server(reader: StoreReader | None = None) -> _Server:
     reader = reader or StoreReader()
-    server = _Server("audio-notes", instructions=_INSTRUCTIONS)
+    server = _Server("Audio Notes", instructions=_INSTRUCTIONS)
 
     @server.tool()
     def get_transcript(since_cursor: int = 0, last_n_minutes: float | None = None) -> str:

@@ -37,13 +37,13 @@ def compute_state(recording: bool, error: str | None, downloading: bool) -> Tray
 
 def describe(state: TrayState, error: str | None = None) -> TrayView:
     if state is TrayState.RECORDING:
-        view = TrayView(state, "audio-notes: recording", "Pause recording", True, True)
+        view = TrayView(state, "Audio Notes: recording", "Pause recording", True, True)
     elif state is TrayState.DOWNLOADING:
-        view = TrayView(state, "audio-notes: downloading speech model...", "Start recording", False, False)
+        view = TrayView(state, "Audio Notes: downloading speech model...", "Start recording", False, False)
     elif state is TrayState.ERROR:
-        view = TrayView(state, f"audio-notes: error - {error or 'unknown'}", "Start recording", True, True)
+        view = TrayView(state, f"Audio Notes: error - {error or 'unknown'}", "Start recording", True, True)
     else:
-        view = TrayView(state, "audio-notes: idle", "Start recording", True, True)
+        view = TrayView(state, "Audio Notes: idle", "Start recording", True, True)
     if len(view.tooltip) > MAX_TOOLTIP:
         view = TrayView(
             view.state, view.tooltip[: MAX_TOOLTIP - 3] + "...", view.toggle_label, view.toggle_enabled, view.mic_enabled

@@ -74,7 +74,7 @@ class TrayApp:
             self._icon.title = v.tooltip
             self._icon.update_menu()
 
-    def _notify(self, message: str, title: str = "audio-notes") -> None:
+    def _notify(self, message: str, title: str = "Audio Notes") -> None:
         if self._icon is not None:
             try:
                 self._icon.notify(message, title)
@@ -120,8 +120,9 @@ class TrayApp:
             return
         if not self._confirm(
             "Connect to Claude",
-            f"Add the audio-notes MCP server to the Claude Desktop config?\n\n{path}\n\n"
-            "A backup of the existing file is made first. Restart Claude Desktop afterwards.",
+            f"Add the Audio Notes MCP server to the Claude Desktop config?\n\n{path}\n\n"
+            "Quit Claude Desktop completely first (also from the tray): it rewrites this file when it "
+            "exits. A backup of the existing file is made first. Start Claude Desktop afterwards.",
         ):
             return
         try:

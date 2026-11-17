@@ -12,7 +12,8 @@ from typing import Optional
 
 import typer
 
-SERVER_NAME = "audio-notes"
+SERVER_NAME = "audio-notes"  # Claude Code `claude mcp add` name (letters, digits, - and _ only)
+DESKTOP_SERVER_NAME = "Audio Notes"  # key in claude_desktop_config.json, shown in Claude Desktop
 CONFIG_ENV = "AUDIO_NOTES_CLAUDE_CONFIG"  # overrides the Claude Desktop config path (tests)
 
 
@@ -125,7 +126,8 @@ def merge_config(config_path: Path) -> Path | None:
     servers = data.setdefault("mcpServers", {})
     if not isinstance(servers, dict):
         raise ValueError("'mcpServers' is not a JSON object")
-    servers[SERVER_NAME] = build_entry()
+    servers.pop(SERVER_NAME, None)  # entry written by older versions under the command name
+    servers[DESKTOP_SERVER_NAME] = build_entry()
     tmp =config_path.with_name(config_path.name + ".tmp")
     tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     os.replace(tmp, config_path)
@@ -142,7 +144,7 @@ def register(app: typer.Typer) -> None:
         config: Optional[Path] = typer.Option(None, "--config", help="Claude Desktop config path override."),
     ) -> None:
         """Print (or with --write, install) the Claude MCP configuration."""
-        snippet = {"mcpServers": {SERVER_NAME: build_entry()}}
+        snippet = {"mcpServers": {DESKTOP_SERVER_NAME: build_entry()}}
         typer.echo("Claude Desktop (claude_desktop_config.json):")
         typer.echo(json.dumps(snippet, indent=2))
         typer.echo("")
@@ -157,7 +159,7 @@ def register(app: typer.Typer) -> None:
         if not claude_desktop_installed(path):
             typer.echo(f"Claude Desktop does not seem to be installed ({path.parent} not found); nothing written.", err=True)
             raise typer.Exit(NOT_INSTALLED_EXIT)
-        if not yes and not typer.confirm(f"Merge the '{SERVER_NAME}' entry into {path}? A backup is made first."):
+        if not yes and not typer.confirm(f"Merge the '{DESKTOP_SERVER_NAME}' entry into {path}? A backup is made first."):
             typer.echo("Aborted; nothing written.")
             raise typer.Exit(1)
         try:
