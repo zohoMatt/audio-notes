@@ -30,6 +30,14 @@ def _setup_logging(to_file: bool = False) -> None:
     )
 
 
+def _wait_until_interrupted() -> None:
+    try:
+        while True:
+            time.sleep(0.5)
+    except KeyboardInterrupt:
+        pass
+
+
 def register(app: typer.Typer) -> None:
     @app.command()
     def mcp() -> None:
@@ -39,7 +47,11 @@ def register(app: typer.Typer) -> None:
         main()
 
     @app.command()
-    def tray() -> None:
+    def tray(
+        no_tray: bool = typer.Option(
+            False, "--no-tray", help="Run only the web panel (real recorder, no tray icon); Ctrl+C stops."
+        ),
+    ) -> None:
         """Start the tray icon and the local web panel."""
         _setup_logging(to_file=True)
         from audio_notes.config import Config
@@ -67,7 +79,14 @@ def register(app: typer.Typer) -> None:
         # Only once the panel port is ours: a second instance must not overwrite the first's status.
         status.start()
         try:
-            ran = TrayApp(recorder, panel.url).run()
+            if no_tray:
+                # Developer mode: like `record`, no first-run notice; start recording from the panel.
+                typer.echo(f"Panel: {panel.url}")
+                typer.echo("Press Ctrl+C to stop.")
+                _wait_until_interrupted()
+                ran = True
+            else:
+                ran = TrayApp(recorder, panel.url).run()
         finally:
             recorder.stop()
             panel.stop()

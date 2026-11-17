@@ -168,6 +168,45 @@ uv run pytest
 
 Releasing: see [installer/RELEASING.md](installer/RELEASING.md).
 
+### Running from source
+
+Everything runs from the repository without building or installing the app:
+
+```powershell
+uv run audio-notes tray              # tray icon + web panel
+uv run audio-notes tray --no-tray    # web panel only (real recorder); prints the panel URL, Ctrl+C stops
+uv run audio-notes record --no-mic   # record system audio without any UI; Ctrl+C stops
+uv run audio-notes sessions          # then: show, status
+```
+
+Run the whole pipeline without speakers or a microphone, from the test recordings:
+
+```powershell
+uv run audio-notes record --them-file tests/fixtures/them_budget.wav --me-file tests/fixtures/me_question.wav --fast
+```
+
+Point Claude Code at the source tree instead of an installed build (restart the Claude Code
+session to pick up code changes):
+
+```powershell
+claude mcp add audio-notes -- uv --directory D:\path\to\audio-notes run audio-notes mcp
+```
+
+`tray --no-tray` and `record` skip the first-run recording notice. The demos in
+[scripts/demos](scripts/demos/README.md) show single modules with fake data in a temporary folder;
+`$env:DEMO_NO_TRAY=1; uv run python scripts/demos/tray_web_demo.py` runs the panel with a
+simulated conversation.
+
+Environment variables that help while developing:
+
+| Variable | Effect |
+|---|---|
+| `AUDIO_NOTES_DATA_DIR` | Keep transcripts in another folder, away from your real ones |
+| `AUDIO_NOTES_WEB_PORT` | Panel port (default 8765); lets a source run sit next to an installed one |
+| `AUDIO_NOTES_MODEL` | ASR model, e.g. `tiny.en` for faster downloads and transcription |
+| `AUDIO_NOTES_VAD_SILENCE_MS`, `AUDIO_NOTES_VAD_MAX_S` | When a segment is cut and sent to ASR |
+| `AUDIO_NOTES_CLAUDE_CONFIG` | Claude Desktop config file used by `setup claude --write` and `clean` |
+
 ### Clean up after local testing
 
 Testing the installer and "Connect to Claude" leaves entries and backups behind. To remove them,
