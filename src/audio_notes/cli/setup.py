@@ -28,10 +28,25 @@ def claude_desktop_config_path() -> Path:
     return Path.home() / ".config" / "Claude" / "claude_desktop_config.json"
 
 
+NOT_INSTALLED_EXIT = 3  # `setup claude --write` exit code when Claude Desktop is not installed
+CLI_EXE_NAME = "audio-notes.exe"  # console build; the tray exe (windowed) has no `mcp` command
+
+
+class ClaudeNotInstalled(Exception):
+    """Claude Desktop's config directory does not exist, so Claude Desktop is not installed."""
+
+
+def claude_desktop_installed(config_path: Path) -> bool:
+    return config_path.parent.is_dir()
+
+
 def server_command() -> tuple[str, list[str]]:
     """Absolute command + args that start the MCP server (Claude Desktop may lack PATH)."""
     if getattr(sys, "frozen", False):  # packaged exe
-        return str(Path(sys.executable).resolve()), ["mcp"]
+        me = Path(sys.executable).resolve()
+        # The tray runs as audio-notes-tray.exe, which cannot serve MCP: point at its console sibling.
+        cli = me.with_name(CLI_EXE_NAME)
+        return str(cli if cli.exists() else me), ["mcp"]
     exe = shutil.which("audio-notes")
     if exe:
         return str(Path(exe).resolve()), ["mcp"]
@@ -56,7 +71,11 @@ def claude_mcp_add_command() -> str:
 
 
 def merge_config(config_path: Path) -> Path | None:
-    """Merge our entry into the config file. Returns the backup path (None if file was new)."""
+    """Merge our entry into the config file. Returns the backup path (None if file was new).
+
+    Never creates Claude's own config directory: raises ClaudeNotInstalled if it is missing."""
+    if not claude_desktop_installed(config_path):
+        raise ClaudeNotInstalled(f"Claude Desktop does not seem to be installed ({config_path.parent} not found)")
     data: dict = {}
     backup: Path | None = None
     if config_path.exists():
@@ -72,8 +91,7 @@ def merge_config(config_path: Path) -> Path | None:
     if not isinstance(servers, dict):
         raise ValueError("'mcpServers' is not a JSON object")
     servers[SERVER_NAME] = build_entry()
-    config_path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = config_path.with_name(config_path.name + ".tmp")
+    tmp =config_path.with_name(config_path.name + ".tmp")
     tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     os.replace(tmp, config_path)
     return backup
@@ -85,6 +103,7 @@ def register(app: typer.Typer) -> None:
     @setup_app.command("claude")
     def setup_claude(
         write: bool = typer.Option(False, "--write", help="Merge into the Claude Desktop config (asks first)."),
+        yes: bool = typer.Option(False, "--yes", "-y", help="With --write: do not ask for confirmation."),
         config: Optional[Path] = typer.Option(None, "--config", help="Claude Desktop config path override."),
     ) -> None:
         """Print (or with --write, install) the Claude MCP configuration."""
@@ -100,11 +119,17 @@ def register(app: typer.Typer) -> None:
             return
         path = config or claude_desktop_config_path()
         typer.echo("")
-        if not typer.confirm(f"Merge the '{SERVER_NAME}' entry into {path}? A backup is made first."):
+        if not claude_desktop_installed(path):
+            typer.echo(f"Claude Desktop does not seem to be installed ({path.parent} not found); nothing written.", err=True)
+            raise typer.Exit(NOT_INSTALLED_EXIT)
+        if not yes and not typer.confirm(f"Merge the '{SERVER_NAME}' entry into {path}? A backup is made first."):
             typer.echo("Aborted; nothing written.")
             raise typer.Exit(1)
         try:
             backup = merge_config(path)
+        except ClaudeNotInstalled as e:
+            typer.echo(str(e), err=True)
+            raise typer.Exit(NOT_INSTALLED_EXIT)
         except (ValueError, OSError) as e:
             typer.echo(f"Could not update {path}: {e}", err=True)
             raise typer.Exit(1)

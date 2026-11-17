@@ -114,6 +114,10 @@ class TrayApp:
 
         path = (self._claude_config_path or setup_cli.claude_desktop_config_path)()
         merge = self._merge_config or setup_cli.merge_config
+        if not setup_cli.claude_desktop_installed(path):
+            self._notify("Claude Desktop does not seem to be installed, so there is nothing to connect.",
+                         "Connect to Claude")
+            return
         if not self._confirm(
             "Connect to Claude",
             f"Add the audio-notes MCP server to the Claude Desktop config?\n\n{path}\n\n"
@@ -122,7 +126,7 @@ class TrayApp:
             return
         try:
             backup = merge(path)
-        except (ValueError, OSError) as e:
+        except (ValueError, OSError, setup_cli.ClaudeNotInstalled) as e:
             self._notify(f"Could not update the Claude config: {e}", "Connect to Claude")
             return
         extra = f" Backup: {backup.name}." if backup else ""

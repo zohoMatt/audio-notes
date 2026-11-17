@@ -84,8 +84,44 @@ def test_setup_claude_print_only(tmp_path):
 
 def test_setup_write_requires_confirmation(tmp_path):
     cfg = tmp_path / "claude" / "cfg.json"
+    cfg.parent.mkdir()
     r = runner.invoke(app, ["setup", "claude", "--write"], input="n\n")
     assert r.exit_code == 1 and not cfg.exists()
+
+
+def test_setup_write_yes_skips_confirmation(tmp_path):
+    cfg = tmp_path / "claude" / "cfg.json"
+    cfg.parent.mkdir()
+    r = runner.invoke(app, ["setup", "claude", "--write", "--yes"])  # no input: must not prompt
+    assert r.exit_code == 0, r.output
+    assert "audio-notes" in json.loads(cfg.read_text())["mcpServers"]
+
+
+def test_setup_write_claude_not_installed(tmp_path):
+    cfg = tmp_path / "claude" / "cfg.json"  # directory absent => Claude Desktop not installed
+    r = runner.invoke(app, ["setup", "claude", "--write", "--yes"])
+    assert r.exit_code == 3
+    assert not cfg.parent.exists()  # we must not create Claude's directory
+
+
+def test_merge_config_refuses_missing_dir(tmp_path):
+    from audio_notes.cli import setup as setup_cli
+
+    with pytest.raises(setup_cli.ClaudeNotInstalled):
+        setup_cli.merge_config(tmp_path / "nope" / "cfg.json")
+    assert not (tmp_path / "nope").exists()
+
+
+def test_server_command_frozen_prefers_console_sibling(tmp_path, monkeypatch):
+    from audio_notes.cli import setup as setup_cli
+
+    tray, cli = tmp_path / "audio-notes-tray.exe", tmp_path / "audio-notes.exe"
+    tray.write_text("")
+    monkeypatch.setattr(setup_cli.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(setup_cli.sys, "executable", str(tray))
+    assert setup_cli.server_command() == (str(tray.resolve()), ["mcp"])  # no sibling: fall back
+    cli.write_text("")
+    assert setup_cli.server_command() == (str(cli.resolve()), ["mcp"])
 
 
 def test_setup_write_merges_and_backs_up(tmp_path):

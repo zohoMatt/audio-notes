@@ -44,9 +44,18 @@ Set `AUDIO_NOTES_MODEL` to pick another faster-whisper model (for example `small
 
 ## Connect to Claude
 
+With the Windows installer there is nothing to do: the "Connect to Claude Desktop" option is
+ticked by default and adds audio-notes to Claude Desktop's config during setup. Restart Claude
+Desktop afterwards. If you skipped it, or installed Claude Desktop later, use **Connect to Claude**
+in the tray menu. Uninstalling does not touch Claude's config; remove the `audio-notes` entry from
+`%APPDATA%\Claude\claude_desktop_config.json` yourself if you want it gone.
+
+Advanced / `uv` installs, from the command line:
+
 ```powershell
-audio-notes setup claude           # prints the config / `claude mcp add` command
-audio-notes setup claude --write   # merges it into Claude Desktop's config (asks first)
+audio-notes setup claude                 # prints the config / `claude mcp add` command
+audio-notes setup claude --write         # merges it into Claude Desktop's config (asks first)
+audio-notes setup claude --write --yes   # same, without asking (exit code 3: Claude Desktop not installed)
 ```
 
 The configuration uses the absolute path to the `audio-notes` executable, so it works even when

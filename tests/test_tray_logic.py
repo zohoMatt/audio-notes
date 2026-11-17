@@ -163,6 +163,17 @@ def test_connect_to_claude_declined_and_failure(tmp_path):
     app.connect_to_claude()  # reports via notification/log, must not raise
 
 
+def test_connect_to_claude_not_installed_skips_prompt_and_merge(tmp_path):
+    merged, asked = [], []
+    app = make_app(
+        confirm=lambda t, m: asked.append(m) or True,
+        merge_config=merged.append,
+        claude_config_path=lambda: tmp_path / "no-claude" / "cfg.json",
+    )
+    app.connect_to_claude()
+    assert merged == [] and asked == []
+
+
 def test_quit_stops_recording():
     ctrl = FakeController()
     ctrl.recording = True

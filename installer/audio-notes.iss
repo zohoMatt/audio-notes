@@ -28,6 +28,7 @@ ChangesEnvironment=yes
 [Tasks]
 Name: "autostart"; Description: "Start Audio Notes when I sign in to Windows"; Flags: unchecked
 Name: "addtopath"; Description: "Add the audio-notes command to PATH"; Flags: unchecked
+Name: "connectclaude"; Description: "Connect to Claude Desktop (adds the audio-notes MCP server to its config)"
 
 [Dirs]
 ; Transcripts live in {app}\data (see audio_notes/paths.py). Make it writable for normal users
@@ -79,6 +80,19 @@ begin
     Delete(OrigPath, P, Length(App) + 1);
     RegWriteExpandStringValue(HKCU, 'Environment', 'Path', OrigPath);
   end;
+end;
+
+// Register the MCP server with Claude Desktop as the user who started the installer (an elevated
+// install must not write into another account's %APPDATA%). Runs for silent installs too; opt out
+// with /TASKS="!connectclaude". The exit code is ignored on purpose: exit 3 means Claude Desktop is
+// not installed, and any failure here must never fail the install (the tray menu can retry later).
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  ResultCode: Integer;
+begin
+  if (CurStep = ssPostInstall) and WizardIsTaskSelected('connectclaude') then
+    ExecAsOriginalUser(ExpandConstant('{app}\audio-notes.exe'), 'setup claude --write --yes', '',
+      SW_HIDE, ewWaitUntilTerminated, ResultCode);
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
