@@ -27,7 +27,7 @@ SetupIconFile=audio-notes.ico
 ChangesEnvironment=yes
 
 [Tasks]
-Name: "autostart"; Description: "Start Audio Notes when I sign in to Windows"; Flags: unchecked
+; No "start when I sign in" option on purpose: Audio Notes only runs when the user starts it.
 Name: "addtopath"; Description: "Add the audio-notes command to PATH"; Flags: unchecked
 Name: "connectclaude"; Description: "Connect to Claude Desktop (adds the audio-notes MCP server to its config)"
 
@@ -45,7 +45,6 @@ Name: "{group}\Audio Notes"; Filename: "{app}\audio-notes-tray.exe"; IconFilenam
 Name: "{group}\Uninstall Audio Notes"; Filename: "{uninstallexe}"
 
 [Registry]
-Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "AudioNotes"; ValueData: """{app}\audio-notes-tray.exe"""; Flags: uninsdeletevalue; Tasks: autostart
 ; PATH is edited per-user (HKCU); admin installs still only touch the installing user's PATH.
 Root: HKCU; Subkey: "Environment"; ValueType: expandsz; ValueName: "Path"; ValueData: "{olddata};{app}"; Check: NeedsAddPath(ExpandConstant('{app}')); Tasks: addtopath
 
@@ -87,10 +86,17 @@ end;
 // install must not write into another account's %APPDATA%). Runs for silent installs too; opt out
 // with /TASKS="!connectclaude". The exit code is ignored on purpose: exit 3 means Claude Desktop is
 // not installed, and any failure here must never fail the install (the tray menu can retry later).
+// Earlier builds offered a sign-in autostart entry; drop it on upgrade and uninstall.
+procedure RemoveLegacyAutostart();
+begin
+  RegDeleteValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Run', 'AudioNotes');
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   ResultCode: Integer;
 begin
+  if CurStep = ssPostInstall then RemoveLegacyAutostart();
   if (CurStep = ssPostInstall) and WizardIsTaskSelected('connectclaude') then
     ExecAsOriginalUser(ExpandConstant('{app}\audio-notes.exe'), 'setup claude --write --yes', '',
       SW_HIDE, ewWaitUntilTerminated, ResultCode);
@@ -98,5 +104,9 @@ end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
-  if CurUninstallStep = usPostUninstall then RemoveFromPath();
+  if CurUninstallStep = usPostUninstall then
+  begin
+    RemoveFromPath();
+    RemoveLegacyAutostart();
+  end;
 end;
