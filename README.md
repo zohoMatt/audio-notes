@@ -6,8 +6,8 @@
 
 ### Your meetings, transcribed on your PC. Ask Claude about them.
 
-**System audio + microphone → local Whisper transcript → Claude, over MCP.**<br>
-Audio never leaves your machine. Claude sees only the transcript lines it reads when you ask.
+**Open source. Fully local. Works offline. Secure by default.**<br>
+System audio + microphone → Whisper on your CPU → Claude, over MCP. Audio never leaves your machine.
 
 [![Download for Windows](https://img.shields.io/badge/Download-Windows%20installer-312E81?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/zohoMatt/audio-notes/releases/latest)
 [![Quick start](https://img.shields.io/badge/Quick%20start-4%20steps-F472B6?style=for-the-badge)](#quick-start)
@@ -22,11 +22,24 @@ Audio never leaves your machine. Claude sees only the transcript lines it reads 
 
 ---
 
-A lightweight Windows tray tool that captures **system audio** (what you hear) and your **microphone**,
-transcribes both **locally** with [faster-whisper](https://github.com/SYSTRAN/faster-whisper) on the CPU,
-and lets Claude read the transcript through an [MCP](https://modelcontextprotocol.io) server.
-Audio never leaves your machine, and transcripts stay on disk until you ask Claude about them (see
-[What stays on your PC](#what-stays-on-your-pc)). Transcripts are stored in the `data` folder next to
+Audio Notes is a lightweight Windows tray tool that captures **system audio** (what you hear) and
+your **microphone**, transcribes both on your own CPU with
+[faster-whisper](https://github.com/SYSTRAN/faster-whisper), and lets Claude read the transcript
+through an [MCP](https://modelcontextprotocol.io) server. No cloud service, no account, no telemetry.
+
+- **Open source.** MIT-licensed, built on open-source libraries. You can read exactly what it does
+  with your audio.
+- **Fully local.** Capture and transcription run on your PC. Audio is never written to disk or sent
+  anywhere; transcripts are plain files on your disk.
+- **Works offline.** After the speech model is downloaded once, recording and transcription need no
+  internet connection.
+- **Secure by default.** Claude connects over stdio, so there is no network port to reach. The
+  panel listens on `127.0.0.1` only and requires a random token that changes on every run.
+
+Transcript lines leave your PC only when you ask Claude about them: the lines Claude reads become
+part of that conversation. See [What stays on your PC](#what-stays-on-your-pc) for the details.
+
+Transcripts are stored in the `data` folder next to
 the program when you use the installer or the packaged build (so the tray, the command line and the MCP
 server always agree on where they are), and under `%APPDATA%\audio-notes\` when you install with
 pip / uv. Set `AUDIO_NOTES_DATA_DIR` to put them somewhere else.
