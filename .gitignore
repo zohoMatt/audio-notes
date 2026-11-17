@@ -4,3 +4,7 @@ __pycache__/
 dist/
 build/
 .pytest_cache/
+# macOS capture helper build output (swift build / hatch_build.py)
+macos/capture/.build/
+macos/capture/.swiftpm/
+src/audio_notes/capture/bin/

@@ -1,0 +1,116 @@
+// `tap` mode: system audio via a Core Audio process tap (macOS 14.2+).
+//
+// A global stereo tap of everything the system plays is wrapped in a private aggregate device
+// whose main sub-device is the current default output; an IO proc on that aggregate device
+// receives the tapped audio. This is the approach of Apple's "Capturing system audio with Core
+// Audio taps" sample and of open-source tools such as AudioCap / audiotee.
+//
+// Permission: "System Audio Recording Only" (Privacy & Security > Screen & System Audio Recording),
+// attributed to the app that started us (the terminal for `uv tool install` users). When it is
+// denied the tap does not fail: it delivers silence. So we preflight it with the private TCC SPI
+// (see Permissions.swift) and exit with `permissionDenied` when it reports "denied".
+
+import AudioToolbox
+import CoreAudio
+import Foundation
+
+@available(macOS 14.2, *)
+final class TapCapture {
+    private var tapID = AudioObjectID(kAudioObjectUnknown)
+    private var aggregateID = AudioObjectID(kAudioObjectUnknown)
+    private var procID: AudioDeviceIOProcID?
+    private let ioQueue = DispatchQueue(label: "audio-notes-capture.tap-io", qos: .userInteractive)
+    private let writer: FrameWriter
+    private(set) var outputDevice = AudioObjectID(kAudioObjectUnknown)
+
+    init(writer: FrameWriter) {
+        self.writer = writer
+    }
+
+    func start() throws {
+        outputDevice = try defaultDevice(output: true)
+        guard let outputUID = deviceUID(outputDevice) else {
+            throw CoreAudioError(call: "default output device UID", status: -1)
+        }
+        let outputName = deviceName(outputDevice) ?? outputUID
+
+        let description = CATapDescription(stereoGlobalTapButExcludeProcesses: [])
+        description.uuid = UUID()
+        description.name = "Audio Notes system audio"
+        description.isPrivate = true
+        description.muteBehavior = .unmuted
+        try check(AudioHardwareCreateProcessTap(description, &tapID), "AudioHardwareCreateProcessTap")
+
+        let aggregate: [String: Any] = [
+            kAudioAggregateDeviceNameKey: "Audio Notes Tap",
+            kAudioAggregateDeviceUIDKey: UUID().uuidString,
+            kAudioAggregateDeviceMainSubDeviceKey: outputUID,
+            kAudioAggregateDeviceIsPrivateKey: true,
+            kAudioAggregateDeviceIsStackedKey: false,
+            kAudioAggregateDeviceTapAutoStartKey: true,
+            kAudioAggregateDeviceSubDeviceListKey: [[kAudioSubDeviceUIDKey: outputUID]],
+            kAudioAggregateDeviceTapListKey: [[
+                kAudioSubTapDriftCompensationKey: true,
+                kAudioSubTapUIDKey: description.uuid.uuidString,
+            ]],
+        ]
+        try check(AudioHardwareCreateAggregateDevice(aggregate as CFDictionary, &aggregateID),
+                  "AudioHardwareCreateAggregateDevice")
+
+        let format: AudioStreamBasicDescription = try readValue(
+            tapID, kAudioTapPropertyFormat, initial: AudioStreamBasicDescription())
+        guard format.mFormatID == AudioFormatID(kAudioFormatLinearPCM),
+              format.mFormatFlags & AudioFormatFlags(kAudioFormatFlagIsFloat) != 0,
+              format.mBitsPerChannel == 32, format.mSampleRate > 0 else {
+            throw CoreAudioError(call: "unexpected tap format (want 32-bit float PCM)", status: -1)
+        }
+        let rate = format.mSampleRate
+        let writer = self.writer
+
+        try check(AudioDeviceCreateIOProcIDWithBlock(&procID, aggregateID, ioQueue) { _, inputData, inputTime, _, _ in
+            let buffers = UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: inputData))
+            let mono = downmix(buffers)
+            let time = inputTime.pointee
+            let host = time.mFlags.contains(.hostTimeValid) ? HostClock.nanos(time.mHostTime) : 0
+            writer.writeSamples(mono, sampleRate: rate, hostNanos: host)
+        }, "AudioDeviceCreateIOProcIDWithBlock")
+        try check(AudioDeviceStart(aggregateID, procID), "AudioDeviceStart")
+        writer.writeReady(sampleRate: rate, deviceName: outputName)
+        logLine("system audio tap started on \(outputName) (\(Int(rate)) Hz, \(format.mChannelsPerFrame) ch)")
+    }
+
+    func stop() {
+        if let procID {
+            AudioDeviceStop(aggregateID, procID)
+            AudioDeviceDestroyIOProcID(aggregateID, procID)
+            self.procID = nil
+        }
+        if aggregateID != AudioObjectID(kAudioObjectUnknown) {
+            AudioHardwareDestroyAggregateDevice(aggregateID)
+            aggregateID = AudioObjectID(kAudioObjectUnknown)
+        }
+        if tapID != AudioObjectID(kAudioObjectUnknown) {
+            AudioHardwareDestroyProcessTap(tapID)
+            tapID = AudioObjectID(kAudioObjectUnknown)
+        }
+    }
+}
+
+@available(macOS 14.2, *)
+func runTap(writer: FrameWriter) -> Never {
+    if TCC.audioCaptureStatus() == "denied" {
+        finish(.permissionDenied, "system audio recording permission denied")
+    }
+    let tap = TapCapture(writer: writer)
+    addCleanup { tap.stop() }
+    do {
+        try tap.start()
+    } catch {
+        tap.stop()
+        finish((try? defaultDevice(output: true)) == nil ? .noDevice : .failure, "\(error)")
+    }
+    exitWhenDefaultDeviceChanges(output: true)
+    exitWhenDeviceDies(tap.outputDevice)
+    stopOnParentRequest()
+    dispatchMain()
+}
