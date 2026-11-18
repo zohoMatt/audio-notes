@@ -120,3 +120,29 @@ def test_uninstall_not_installed(env):
     r = runner.invoke(app, ["clean", "--uninstall", "--yes"])
     hint = "uv tool uninstall audio-notes" if sys.platform == "darwin" else "No installed Audio Notes"
     assert r.exit_code == 0 and hint in r.output and "Nothing to clean" in r.output
+
+
+def test_purge_data_on_macos_removes_app_support_and_logs(env, monkeypatch):
+    tmp_path, _, _ = env
+    home = tmp_path / "home"
+    support = home / "Library" / "Application Support" / "Audio Notes"
+    logs = home / "Library" / "Logs" / "Audio Notes"
+    (support / "sessions").mkdir(parents=True)
+    (support / "sessions" / "2026-11-18_10-00-00.jsonl").write_text("{}\n", encoding="utf-8")
+    logs.mkdir(parents=True)
+    (logs / "audio-notes.log").write_text("x\n", encoding="utf-8")
+    monkeypatch.delenv("AUDIO_NOTES_DATA_DIR")
+    monkeypatch.delenv("APPDATA", raising=False)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+    monkeypatch.setattr(sys, "platform", "darwin")
+
+    r = runner.invoke(app, ["clean", "--purge-data", "--uninstall", "--dry-run"])
+    assert r.exit_code == 0, r.output
+    assert "uv tool uninstall audio-notes" in r.output
+    assert f"transcripts     {support}" in r.output and f"logs            {logs}" in r.output
+
+    r = runner.invoke(app, ["clean", "--purge-data", "--yes"])
+    assert r.exit_code == 0, r.output
+    assert not support.exists() and not logs.exists()
+    assert (home / "Library" / "Logs").is_dir()  # only our folders go
