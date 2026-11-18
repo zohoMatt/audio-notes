@@ -316,6 +316,9 @@ class Recorder:
             log.info("audio capture re-bound")
 
 
+MAX_ERROR_CHARS = 300  # long enough for "Cannot capture audio: <permission hint + Settings path>"
+
+
 def _short(exc: BaseException) -> str:
     text = str(exc).strip() or type(exc).__name__
-    return text if len(text) <= 160 else text[:157] + "..."
+    return text if len(text) <= MAX_ERROR_CHARS else text[:MAX_ERROR_CHARS - 3] + "..."

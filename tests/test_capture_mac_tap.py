@@ -295,3 +295,21 @@ def test_recorder_session_origin_uses_the_sources_clock(monkeypatch):
     assert recorder_mod.default_clock() is mac_tap.session_clock
     monkeypatch.setattr(recorder_mod.sys, "platform", "win32")
     assert recorder_mod.default_clock() is time.monotonic
+
+
+def test_permission_errors_keep_the_settings_path():
+    # Seen on a real Mac: the 160-char cut ended the message at "Screen & System Audio Rec...".
+    from audio_notes.recorder import Recorder, capture_problem
+
+    for mode, page in (("tap", "Screen & System Audio Recording"), ("mic", "Privacy & Security > Microphone")):
+        problem = capture_problem({"them": mac_tap.error_for_exit(mode, mac_tap.EXIT_PERMISSION_DENIED)}, 2)
+        assert problem and problem.endswith(page)
+
+    class Failing:
+        def load(self):
+            raise RuntimeError(capture_problem({"them": mac_tap.error_for_exit("tap", 12)}, 2))
+
+    rec = Recorder(transcriber=Failing(), model_cached=lambda m: True)
+    with pytest.raises(RuntimeError):
+        rec.start()
+    assert rec.last_error().endswith("Screen & System Audio Recording")
