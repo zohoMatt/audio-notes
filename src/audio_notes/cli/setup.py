@@ -124,6 +124,51 @@ def server_command() -> tuple[str, list[str]]:
     return str(Path(sys.executable).resolve()), ["-m", "audio_notes", "mcp"]
 
 
+def _venv_root(command: Path) -> Path | None:
+    for d in command.parents:
+        if (d / "pyvenv.cfg").is_file():
+            return d
+    return None
+
+
+def _is_hidden(p: Path) -> bool:
+    import stat
+
+    try:
+        return bool(getattr(os.stat(p), "st_flags", 0) & stat.UF_HIDDEN)
+    except OSError:
+        return False
+
+
+def hidden_venv_warning(command: str) -> str | None:
+    """Why `command` may not start under Claude Desktop on macOS, or None.
+
+    iCloud Drive ("Desktop & Documents") sets the hidden flag on dot-folders such as `.venv` a few
+    seconds after they appear, and Python (3.12.14+, 3.13+) then skips their `.pth` files, so the
+    editable install vanishes: `No module named 'audio_notes'`. `uv run` re-syncs the venv first,
+    which hides the problem when testing from a terminal, but Claude Desktop starts the command
+    directly."""
+    if sys.platform != "darwin" or getattr(sys, "frozen", False):
+        return None
+    venv = _venv_root(Path(command))
+    if venv is None:
+        return None
+    pth = list(venv.glob("lib/python*/site-packages/*.pth"))
+    hidden = _is_hidden(venv) or any(_is_hidden(p) for p in pth)
+    try:
+        rel = venv.relative_to(Path.home()).parts
+    except ValueError:
+        rel = ()
+    synced = bool(rel) and rel[0] in ("Documents", "Desktop") and any(p.startswith(".") for p in rel[1:])
+    if not (hidden or synced):
+        return None
+    why = ("its .pth files are marked hidden, so Python skips them"
+           if hidden else "iCloud Drive may mark it hidden, and Python then skips its .pth files")
+    return (f"WARNING: {command} runs from the virtualenv {venv}; {why} and the MCP server fails with "
+            "\"No module named 'audio_notes'\" when Claude starts it. Install it as a tool instead "
+            "(`uv tool install .`), then run `audio-notes setup claude` from there.")
+
+
 def build_entry() -> dict:
     command, args = server_command()
     return {"command": command, "args": args}
@@ -182,6 +227,10 @@ def register(app: typer.Typer) -> None:
         typer.echo("")
         typer.echo("Claude Code:")
         typer.echo(claude_mcp_add_command())
+        warning = hidden_venv_warning(snippet["mcpServers"][DESKTOP_SERVER_NAME]["command"])
+        if warning:
+            typer.echo("")
+            typer.echo(warning, err=True)
         if not write:
             typer.echo("")
             typer.echo("Run with --write to merge the entry into the Claude Desktop config.")
