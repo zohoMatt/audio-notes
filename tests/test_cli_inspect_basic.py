@@ -171,6 +171,6 @@ def test_show_follow_moves_on_to_a_new_session(monkeypatch):
 
     monkeypatch.setattr("audio_notes.cli.inspect.time.sleep", fake_sleep)
     r = runner.invoke(app, ["show", "-f"])
-    assert "--- new session 2026-01-01_11-00-00 ---" in r.output
+    assert "--- new session Stream002 (2026-01-01_11-00-00) ---" in r.output
     assert r.output.count("line 0") == 2 and "line 1" in r.output
     later[0].close()
