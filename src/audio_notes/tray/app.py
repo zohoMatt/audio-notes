@@ -145,23 +145,22 @@ class TrayApp:
             return
         running = self._claude_running or setup_cli.claude_desktop_running
         how = "Cmd+Q" if sys.platform == "darwin" else "also from the tray"
-        if running():
-            # Claude Desktop rewrites its config when it exits, which would erase the change.
+        question = f"Add the Audio Notes MCP server to the Claude Desktop config?\n\n{path}\n\n"
+        tail = " A backup of the existing file is made first. Start Claude Desktop afterwards."
+        if not running():
+            if not self._confirm("Connect to Claude", f"{question}Quit Claude Desktop completely first "
+                                 f"({how}): it rewrites this file when it exits.{tail}"):
+                return
+        else:
+            # Claude Desktop rewrites its config when it exits, which would erase the change: ask
+            # again (a modal dialog, not an easily missed notification) until it is gone or Cancel.
             head = (f"Claude Desktop is running. Quit it completely now ({how}), then choose Continue: "
                     "it rewrites its config when it exits, which would undo this change.")
-        else:
-            head = (f"Quit Claude Desktop completely first ({how}): it rewrites this file when it "
-                    "exits.")
-        if not self._confirm(
-            "Connect to Claude",
-            f"Add the Audio Notes MCP server to the Claude Desktop config?\n\n{path}\n\n"
-            f"{head} A backup of the existing file is made first. Start Claude Desktop afterwards.",
-        ):
-            return
-        if running():
-            self._notify("Claude Desktop is still running, so nothing was changed. Quit it, then choose "
-                         "Connect to Claude again.", "Connect to Claude")
-            return
+            while running():
+                if not self._confirm("Connect to Claude", f"{question}{head}{tail}"):
+                    return
+                head = (f"Claude Desktop is still running, so nothing was changed. Quit it completely "
+                        f"({how}), then choose Continue, or choose Cancel.")
         try:
             backup = merge(path)
         except (ValueError, OSError, setup_cli.ClaudeNotInstalled) as e:
