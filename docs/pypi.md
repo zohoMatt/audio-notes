@@ -14,7 +14,7 @@ transcript through an [MCP](https://modelcontextprotocol.io) server. Audio never
 machine; Claude sees only the transcript lines it reads when you ask, as part of that
 conversation. No telemetry, no account.
 
-Prefer a regular Windows installer (no Python needed)? Get it from the
+Prefer a regular Windows installer or a macOS app (no Python needed)? Get it from the
 [GitHub Releases page](https://github.com/zohoMatt/audio-notes/releases/latest).
 
 ## Install
@@ -25,7 +25,9 @@ audio-notes --version
 ```
 
 ([uv](https://docs.astral.sh/uv/) manages Python for you; `pipx install audio-notes` works too.)
-Windows only for now; Python 3.10+.
+Python 3.10+. Windows, and (preview) macOS 14.2+ on Apple Silicon: the macOS wheel ships
+the compiled capture helper. On a Mac, run it from a terminal app, which is then the app that
+asks for microphone and system audio recording permission.
 
 ## Connect to Claude
 
@@ -73,7 +75,7 @@ apply to you and for telling participants when you record meetings or calls.
 - **Headphones recommended.** With speakers, the microphone can pick up the system audio again,
   so the same speech may appear twice.
 - Applications using **WASAPI exclusive mode** bypass the shared mixer and are not captured.
-- Windows only for now.
+- macOS support is a preview: Apple Silicon only, macOS 14.2 or later.
 
 Full documentation, screenshots and the installer:
 [github.com/zohoMatt/audio-notes](https://github.com/zohoMatt/audio-notes)

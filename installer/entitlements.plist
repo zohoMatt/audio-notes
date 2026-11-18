@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Entitlements for Audio Notes.app (applied by installer/build_mac.sh to the two executables in
+  Contents/MacOS and the Swift capture helper). Only take effect under the Hardened Runtime, i.e.
+  with a Developer ID signature; the ad-hoc build is signed without the Hardened Runtime.
+  No App Sandbox: the app writes Claude Desktop's config file (docs/MACOS.md 4.2).
+  If the notarized build crashes at start (PyInstaller / ctranslate2 / onnxruntime mapping
+  unsigned executable memory), add com.apple.security.cs.allow-unsigned-executable-memory.
+-->
+<plist version="1.0">
+<dict>
+    <!-- Hardened Runtime: required to use the microphone (AVAudioEngine in the helper). -->
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
+</dict>
+</plist>
