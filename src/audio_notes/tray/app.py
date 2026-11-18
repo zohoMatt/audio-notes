@@ -46,6 +46,7 @@ class TrayApp:
         open_folder: Callable[[Path], None] = _open_folder,
         merge_config: Callable[[Path], Path | None] | None = None,
         claude_config_path: Callable[[], Path] | None = None,
+        claude_running: Callable[[], bool] | None = None,
         on_quit: Callable[[], None] | None = None,
         backend: TrayBackend | None = None,
     ) -> None:
@@ -58,6 +59,7 @@ class TrayApp:
         self._open_folder = open_folder
         self._merge_config = merge_config
         self._claude_config_path = claude_config_path
+        self._claude_running = claude_running
         self._on_quit = on_quit
         self._backend_choice = backend  # None: the platform default, created in run()
         self._backend: TrayBackend | None = None  # the running shell
@@ -141,13 +143,24 @@ class TrayApp:
             self._notify("Claude Desktop does not seem to be installed, so there is nothing to connect.",
                          "Connect to Claude")
             return
+        running = self._claude_running or setup_cli.claude_desktop_running
         how = "Cmd+Q" if sys.platform == "darwin" else "also from the tray"
+        if running():
+            # Claude Desktop rewrites its config when it exits, which would erase the change.
+            head = (f"Claude Desktop is running. Quit it completely now ({how}), then choose Continue: "
+                    "it rewrites its config when it exits, which would undo this change.")
+        else:
+            head = (f"Quit Claude Desktop completely first ({how}): it rewrites this file when it "
+                    "exits.")
         if not self._confirm(
             "Connect to Claude",
             f"Add the Audio Notes MCP server to the Claude Desktop config?\n\n{path}\n\n"
-            f"Quit Claude Desktop completely first ({how}): it rewrites this file when it "
-            "exits. A backup of the existing file is made first. Start Claude Desktop afterwards.",
+            f"{head} A backup of the existing file is made first. Start Claude Desktop afterwards.",
         ):
+            return
+        if running():
+            self._notify("Claude Desktop is still running, so nothing was changed. Quit it, then choose "
+                         "Connect to Claude again.", "Connect to Claude")
             return
         try:
             backup = merge(path)
