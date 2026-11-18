@@ -64,7 +64,15 @@ final class TapCapture {
               format.mBitsPerChannel == 32, format.mSampleRate > 0 else {
             throw CoreAudioError(call: "unexpected tap format (want 32-bit float PCM)", status: -1)
         }
-        let rate = format.mSampleRate
+        // The tap's format reports its own rate (48 kHz here), but the IO proc runs on the
+        // aggregate device's clock, i.e. the output device's nominal rate: a 44.1 kHz output
+        // delivers 44100 samples/s. Label frames with the aggregate rate or audio plays ~9% fast.
+        let deviceRate: Float64 = (try? readValue(aggregateID, kAudioDevicePropertyNominalSampleRate,
+                                                  initial: Float64(0))) ?? 0
+        let rate = deviceRate > 0 ? deviceRate : format.mSampleRate
+        if deviceRate > 0, deviceRate != format.mSampleRate {
+            logLine("tap format says \(Int(format.mSampleRate)) Hz; using the device rate \(Int(deviceRate)) Hz")
+        }
         let writer = self.writer
 
         try check(AudioDeviceCreateIOProcIDWithBlock(&procID, aggregateID, ioQueue) { _, inputData, inputTime, _, _ in
@@ -111,6 +119,7 @@ func runTap(writer: FrameWriter) -> Never {
     }
     exitWhenDefaultDeviceChanges(output: true)
     exitWhenDeviceDies(tap.outputDevice)
+    exitWhenSampleRateChanges(tap.outputDevice)
     stopOnParentRequest()
     dispatchMain()
 }
