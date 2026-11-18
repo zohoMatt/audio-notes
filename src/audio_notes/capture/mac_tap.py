@@ -169,6 +169,18 @@ def encode_ready(sample_rate: int, device_name: str) -> bytes:
     return HEADER.pack(MAGIC_READY, sample_rate, len(name), 0, 0, 0) + name
 
 
+def session_clock() -> float:
+    """Seconds on a clock that keeps counting while the Mac sleeps.
+
+    On macOS `time.monotonic()` is mach_absolute_time, which stops during sleep, so after a
+    lid-close every transcript time would lag the wall clock by the sleep length (Windows'
+    monotonic clock does count sleep). CLOCK_MONOTONIC on macOS is mach_continuous_time-based.
+    The session origin (Recorder -> PipelineRunner) and the sources must use the same clock."""
+    if sys.platform == "darwin":
+        return time.clock_gettime(time.CLOCK_MONOTONIC)
+    return time.monotonic()
+
+
 def chunk_time(received: float, origin: float, frame: Frame) -> float:
     """Seconds since `origin` for the frame's first sample (see the module docstring)."""
     n = len(frame.samples) if frame.samples is not None else 0
@@ -218,7 +230,7 @@ class _HelperSource(AudioSource):
         popen: Popen = subprocess.Popen,
         ready_timeout: float = READY_TIMEOUT_S,
         stop_timeout: float = STOP_TIMEOUT_S,
-        clock: Callable[[], float] = time.monotonic,
+        clock: Callable[[], float] = session_clock,
     ) -> None:
         self._helper_command = helper_command
         self._popen = popen
