@@ -121,5 +121,16 @@ func runTap(writer: FrameWriter) -> Never {
     exitWhenDeviceDies(tap.outputDevice)
     exitWhenSampleRateChanges(tap.outputDevice)
     stopOnParentRequest()
+    // An ungranted tap records silence without failing. "denied" exits above; "undetermined" is
+    // normal while the first prompt is up, but if it lasts, the prompt was never answered or the
+    // responsible app cannot be granted (seen when started from an app bundle without
+    // NSAudioCaptureUsageDescription): say so instead of recording silence quietly.
+    DispatchQueue.main.asyncAfter(deadline: .now() + 15) {
+        let status = TCC.audioCaptureStatus()
+        if status != "authorized" && status != "unknown" {
+            logLine("warning: system audio recording permission is still \(status); recording silence until it is "
+                    + "granted to the app that started Audio Notes")
+        }
+    }
     dispatchMain()
 }

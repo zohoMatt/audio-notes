@@ -351,7 +351,8 @@ class _HelperSource(AudioSource):
             for raw in iter(proc.stderr.readline, b""):
                 line = raw.decode("utf-8", "replace").rstrip()
                 if line:
-                    log.info("[%s helper] %s", self.speaker, line)
+                    level = logging.WARNING if "warning:" in line else logging.INFO
+                    log.log(level, "[%s helper] %s", self.speaker, line)
                     tail.append(line)
                     del tail[:-5]
         except Exception:  # noqa: BLE001
