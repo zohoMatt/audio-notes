@@ -21,6 +21,7 @@ from audio_notes.tray.state import TrayState, TrayView
 SETTINGS_SYSTEM_AUDIO_URL = "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
 SETTINGS_MICROPHONE_URL = "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"
 RELEASES_URL = "https://github.com/zohoMatt/audio-notes/releases"
+AUTHOR = "Matt Zuo"
 MAX_STATUS = 70
 
 
@@ -126,4 +127,5 @@ def updates_message(version: str) -> str:
 
 def about_message(version: str) -> str:
     return (f"Version {version}\n\nCaptures system audio and your microphone, transcribes locally "
-            "with faster-whisper and shares the transcript with Claude over MCP. Nothing leaves this Mac.")
+            "with faster-whisper and shares the transcript with Claude over MCP. Nothing leaves this Mac."
+            f"\n\nBy {AUTHOR}.")
