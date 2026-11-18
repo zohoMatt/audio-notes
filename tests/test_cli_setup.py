@@ -164,3 +164,18 @@ def test_merge_config_new_file_is_owner_only(tmp_path):
     cfg = tmp_path / "claude_desktop_config.json"
     setup_cli.merge_config(cfg)
     assert stat.S_IMODE(cfg.stat().st_mode) == 0o600
+
+
+def test_setup_write_warns_while_claude_desktop_runs_on_macos(tmp_path, monkeypatch):
+    from typer.testing import CliRunner
+
+    from audio_notes.cli import app
+
+    cfg = tmp_path / "claude" / "claude_desktop_config.json"
+    cfg.parent.mkdir()
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr(setup_cli, "claude_desktop_running", lambda: True)
+    monkeypatch.setattr(setup_cli, "hidden_venv_warning", lambda command: None)
+    r = CliRunner().invoke(app, ["setup", "claude", "--write", "--yes", "--config", str(cfg)])
+    assert r.exit_code == 0, r.output
+    assert "Claude Desktop is running" in r.output and "Cmd+Q" in r.output

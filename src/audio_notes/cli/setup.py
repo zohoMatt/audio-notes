@@ -272,10 +272,11 @@ def register(app: typer.Typer) -> None:
             typer.echo(f"Backup: {backup}")
         typer.echo(f"Updated {path}.")
         if claude_desktop_running():
+            where = "Cmd+Q" if sys.platform == "darwin" else "also from the tray"
             typer.echo(
-                "WARNING: Claude Desktop is running and rewrites this file when it exits, which can "
-                "erase the change. Quit it completely (also from the tray), run this command again, "
-                "then start Claude Desktop.",
+                "WARNING: Claude Desktop is running and rewrites this file (while running and when it "
+                f"exits), which can erase the change. Quit it completely ({where}), run this command "
+                "again, then start Claude Desktop.",
                 err=True,
             )
         else:
