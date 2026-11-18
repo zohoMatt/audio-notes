@@ -57,18 +57,41 @@ class ClaudeNotInstalled(Exception):
     """Claude Desktop's config directory does not exist, so Claude Desktop is not installed."""
 
 
-MAC_CLAUDE_PROCESS = "Claude"  # Claude Desktop's main process (Claude.app/Contents/MacOS/Claude)
+MAC_CLAUDE_BUNDLE_ID = "com.anthropic.claudefordesktop"
+# Claude Desktop's main executable, wherever Claude.app is installed. The Claude Code CLI runs as
+# "claude" / "node", and the app's helpers live under Contents/Frameworks, so neither matches.
+MAC_CLAUDE_EXE_SUFFIX = "/Claude.app/Contents/MacOS/Claude"
+
+
+def _mac_running_by_bundle_id() -> bool:
+    try:
+        from AppKit import NSRunningApplication
+    except Exception:  # pyobjc missing or broken: fall back to the process list
+        return False
+    try:
+        return len(NSRunningApplication.runningApplicationsWithBundleIdentifier_(MAC_CLAUDE_BUNDLE_ID)) > 0
+    except Exception:
+        return False
+
+
+def _mac_running_by_process_list() -> bool:
+    # Not `pgrep -x Claude`: on macOS 26 Claude Desktop's kernel process name is not "Claude"
+    # (it is not matched even while running), so match the executable path instead. This also
+    # covers a process without a run loop, where NSRunningApplication's list can be stale.
+    import subprocess
+
+    try:
+        out = subprocess.run(["ps", "-axo", "comm="], capture_output=True, text=True, timeout=10).stdout
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return any(line.strip().endswith(MAC_CLAUDE_EXE_SUFFIX) for line in out.splitlines())
 
 
 def claude_desktop_running() -> bool:
     import subprocess
 
     if sys.platform == "darwin":
-        # Exact, case-sensitive match: the Claude Code CLI runs as "claude" / "node", not "Claude".
-        try:
-            return subprocess.run(["pgrep", "-x", MAC_CLAUDE_PROCESS], capture_output=True, timeout=10).returncode == 0
-        except (OSError, subprocess.SubprocessError):
-            return False
+        return _mac_running_by_bundle_id() or _mac_running_by_process_list()
     if sys.platform != "win32":
         return False
     try:
