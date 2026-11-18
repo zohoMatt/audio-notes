@@ -75,9 +75,9 @@ def _mac_running_by_bundle_id() -> bool:
 
 
 def _mac_running_by_process_list() -> bool:
-    # Not `pgrep -x Claude`: on macOS 26 Claude Desktop's kernel process name is not "Claude"
-    # (it is not matched even while running), so match the executable path instead. This also
-    # covers a process without a run loop, where NSRunningApplication's list can be stale.
+    # Not `pgrep -x Claude`: BSD pgrep never matches its own ancestors, and when Claude Code in
+    # the desktop app runs us, Claude Desktop is one. Match the executable path in ps instead.
+    # This also covers a process without a run loop, where NSRunningApplication can be stale.
     import subprocess
 
     try:
@@ -183,6 +183,25 @@ def claude_mcp_add_command() -> str:
     return " ".join(["claude", "mcp", "add", SERVER_NAME, "--", _quote(command), *map(_quote, args)])
 
 
+def write_json_atomic(path: Path, data: dict) -> None:
+    """Replace `path` with `data` in one step, keeping the file's permissions.
+
+    Claude Desktop keeps its config owner-only (0600); a plain write + replace would leave it
+    world-readable (umask 022). A new file gets 0600."""
+    import stat
+
+    try:
+        mode = stat.S_IMODE(path.stat().st_mode)
+    except OSError:
+        mode = 0o600
+    tmp = path.with_name(path.name + ".tmp")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.write(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
+    os.chmod(tmp, mode)
+    os.replace(tmp, path)
+
+
 def merge_config(config_path: Path) -> Path | None:
     """Merge our entry into the config file. Returns the backup path (None if file was new).
 
@@ -205,9 +224,7 @@ def merge_config(config_path: Path) -> Path | None:
         raise ValueError("'mcpServers' is not a JSON object")
     servers.pop(SERVER_NAME, None)  # entry written by older versions under the command name
     servers[DESKTOP_SERVER_NAME] = build_entry()
-    tmp =config_path.with_name(config_path.name + ".tmp")
-    tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    os.replace(tmp, config_path)
+    write_json_atomic(config_path, data)
     return backup
 
 

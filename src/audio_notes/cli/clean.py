@@ -162,9 +162,7 @@ def _is_log_dir(d: Path) -> bool:
 
 # ---- actions ----------------------------------------------------------------
 def _write_json(path: Path, data: dict) -> None:
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    os.replace(tmp, path)
+    setup_cli.write_json_atomic(path, data)
 
 
 def remove_servers(path: Path, names: list[str], *, project: str | None = None) -> None:

@@ -138,3 +138,29 @@ def test_setup_claude_prints_the_warning(mac_home, monkeypatch):
     monkeypatch.setattr(setup_cli, "server_command", lambda: (str(exe), ["mcp"]))
     r = CliRunner().invoke(app, ["setup", "claude"])
     assert r.exit_code == 0 and "WARNING" in r.output and "No module named" in r.output
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX permissions")
+@pytest.mark.parametrize("mode", [0o600, 0o644])
+def test_merge_config_keeps_the_file_mode(tmp_path, mode):
+    import json
+    import os
+    import stat
+
+    cfg = tmp_path / "claude_desktop_config.json"
+    cfg.write_text(json.dumps({"preferences": {"x": 1}}), encoding="utf-8")
+    os.chmod(cfg, mode)
+    setup_cli.merge_config(cfg)
+    assert stat.S_IMODE(cfg.stat().st_mode) == mode
+    data = json.loads(cfg.read_text(encoding="utf-8"))
+    assert data["preferences"] == {"x": 1} and "Audio Notes" in data["mcpServers"]
+    assert not (tmp_path / "claude_desktop_config.json.tmp").exists()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX permissions")
+def test_merge_config_new_file_is_owner_only(tmp_path):
+    import stat
+
+    cfg = tmp_path / "claude_desktop_config.json"
+    setup_cli.merge_config(cfg)
+    assert stat.S_IMODE(cfg.stat().st_mode) == 0o600

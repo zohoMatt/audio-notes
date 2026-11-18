@@ -146,3 +146,17 @@ def test_purge_data_on_macos_removes_app_support_and_logs(env, monkeypatch):
     assert r.exit_code == 0, r.output
     assert not support.exists() and not logs.exists()
     assert (home / "Library" / "Logs").is_dir()  # only our folders go
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX permissions")
+def test_clean_keeps_the_desktop_config_mode(env):
+    import os
+    import stat
+
+    tmp_path, desktop, code = env
+    _populate(tmp_path, desktop, code)
+    os.chmod(desktop, 0o600)
+    r = runner.invoke(app, ["clean", "--yes"])
+    assert r.exit_code == 0, r.output
+    assert stat.S_IMODE(desktop.stat().st_mode) == 0o600
+    assert "Audio Notes" not in json.loads(desktop.read_text(encoding="utf-8"))["mcpServers"]
