@@ -7,7 +7,7 @@ name = "audio-notes"
 dynamic = ["version"]
 description = "Lightweight tray / menu bar tool: capture system audio, transcribe locally, expose the transcript to Claude via MCP."
 readme = "docs/pypi.md"  # PyPI page (absolute links only); README.md is the GitHub page
-requires-python = ">=3.10"
+requires-python = ">=3.10"  # dev default is pinned in .python-version (3.12); CI tests 3.11, 3.12, 3.14
 keywords = ["audio", "transcription", "whisper", "mcp", "claude", "windows", "macos"]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -20,6 +20,8 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Multimedia :: Sound/Audio :: Speech",
 ]
 license = "MIT"
