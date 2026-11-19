@@ -49,7 +49,8 @@ def _macos() -> None:
     except Exception as e:  # noqa: BLE001
         typer.echo(f"Permissions: unknown ({e})")
         return
-    typer.echo(f"Permissions: microphone {perms.microphone}, system audio recording {perms.system_audio}")
+    typer.echo(f"Permissions: microphone {perms.microphone}, system audio recording {perms.system_audio}"
+               + (f" (granted to: {perms.responsible})" if perms.responsible else ""))
 
 
 def register(app: typer.Typer) -> None:

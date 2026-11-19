@@ -1,6 +1,6 @@
 # macOS 版：打包与表现设计
 
-> 状态：M-mac-1（采集）和 M-mac-2（菜单栏）已写好代码，**尚未在真机上运行过**，见第 10 节的实现说明和真机验证清单。打包（M-mac-3/4）未开始。标 **[待验证]** 的是凭记忆写的平台细节，实现前先在真机上确认。
+> 状态（2026-11-18）：M-mac-1（采集）、M-mac-2（菜单栏）已在真机（macOS 26.6，Apple Silicon）上验证并修复，结果见第 10.5 节。M-mac-3（.app + ad-hoc 签名 DMG）能在本地构建，CI 作业已写好但尚未在 tag 上跑过；M-mac-4（Developer ID 签名公证）等证书。前文标 **[待验证]** 的细节，已验证的在 10.5 节给出结论。
 > 目标：不上 App Store，从 GitHub Releases 下载 DMG，拖进"应用程序"即可用；右上角菜单栏图标对应 Windows 托盘。
 
 ## 1. 结论一览
@@ -224,16 +224,18 @@ flowchart LR
 
 ## 10. 实现说明与真机验证清单（M-mac-1 / M-mac-2）
 
-> 代码是在 Windows 上写的，**Swift 从未编译过，mac 代码从未运行过**。Windows 上能验证的只有：Python 侧用假助手进程跑的单元测试（帧格式、退出码、停止/重开、Recorder 设备切换恢复）、菜单逻辑（不依赖 AppKit）、图标、路径和 CLI 分支。CI 的 `test-macos` 作业（macos-15）会第一次真正编译 Swift。
+> 代码最初在 Windows 上写成，2026-11-18 在真机上逐项验证（结果见 10.5）。单元测试用假助手进程（`tests/fake_mac_helper.py`）覆盖帧格式、退出码、停止/重开和菜单逻辑；CI 的 `test-macos` 作业（macos-15）编译 Swift 助手并跑全部测试，但 CI 没有音频权限，不能真正录音。
 
 ### 10.1 当前的分发方式
 
-- 没有 Developer ID，所以**不做 .app**：用 `uv tool install` 安装，在终端里运行 `audio-notes tray`（或 `audio-notes record`）。
-- 麦克风和系统音频权限因此**算在启动它的终端 app 头上**（弹窗和"系统设置 → 隐私与安全性"里显示 Terminal / iTerm 的名字），也不经过 Gatekeeper。换一个终端 app 要重新授权。
+- 两种方式：`uv tool install` 后在终端里运行 `audio-notes tray`（或 `record`）；或者 `installer/build_mac.sh` 构建的 `Audio Notes.app` / DMG（暂时只有 ad-hoc 签名，首次打开要在"系统设置 → 隐私与安全性"里点"仍要打开"）。
+- **权限算在"负责的 app"头上**（TCC 的 responsible process），不是 python 或助手：从终端启动算在 Terminal / iTerm 头上，从 .app 启动算在 Audio Notes 头上。换一个终端 app 要重新授权。
+- **有的启动方式拿不到系统音频权限**：从 Claude Code / Claude Desktop、IDE 或 launchd 启动时，系统音频一直是 undetermined，不弹窗（或点了"允许"也不生效），Process Tap 只送来静音。这与 app 的 Info.plist 有没有 `NSAudioCaptureUsageDescription` 无关（Terminal 和 iTerm 都没有这项却能授权，Claude.app 有却不能）。助手的 `tap` 模式因此在启动时先请求一次，仍是 undetermined 就以退出码 15 拒绝，并说出负责的 app 名（`permissions` 的 `responsible` 字段、`audio-notes devices` 里的 "granted to"）。
 - 不做开机启动（两个平台都没有）。
 - 安装来源：
   - 从源码：`uv tool install git+https://github.com/zohoMatt/audio-notes`，或在 checkout 里 `uv tool install .`。本机编译 Swift 助手，需要 Xcode 或 Command Line Tools（`xcode-select --install`）。
-  - **PyPI 目前不行**：release 只发布纯 Python wheel（在 ubuntu 上构建，不含助手）；mac 上装到它会在开始录制时报"capture helper is not installed"。要走 PyPI，需要在 `release.yml` 加一个 macos-15 作业构建 `py3-none-macosx_14_0_arm64` wheel 并一起发布（pip/uv 在 mac 上会优先选它）。本分支没有改 release.yml。
+  - PyPI：`release.yml` 的 `build-macos-wheel` 作业构建 `py3-none-macosx_14_0_arm64` wheel（含助手），和纯 Python wheel 一起发布，pip/uv 在 mac 上会优先选它。尚未在真实 tag 上跑过。
+  - 开发环境：checkout 若在 iCloud 同步的 `~/Documents` 里，iCloud 会给 `.venv` 加隐藏标志，Python 随之跳过它的 `.pth`（`No module named 'audio_notes'`）。用 `UV_PROJECT_ENVIRONMENT` 把 venv 放到外面（见 README 的 Development 一节）。
 
 ### 10.2 代码结构
 
@@ -251,13 +253,13 @@ flowchart LR
 
 帧格式：32 字节小端头（`magic` "ANCR"=就绪 / "ANCF"=音频，`sample_rate`，`count`，`flags`，`host_ns`，`sent_ns`）+ float32 单声道样本。时间戳：Python 以收到帧的 `time.monotonic()` 为准，减去助手自己测得的 `sent_ns - host_ns`（采集到写出的延迟），两个进程不需要共享时钟。
 
-退出码：0 正常（stdin EOF / SIGTERM），10 默认设备变了，11 设备没了，12 权限被拒，13 系统低于 14.2，14 没有设备。启动后的 10/11/其他 → `on_lost`，沿用 Recorder 的"全部停掉再重开、失败每 3 秒重试"；启动前的 12 → `CapturePermissionError`，错误文本含 "System Audio Recording permission"，菜单据此显示"Allow System Audio Recording…"。
+退出码：0 正常（stdin EOF / SIGTERM），10 默认设备变了（`tap` 也包括输出采样率变化），11 设备没了，12 权限被拒，13 系统低于 14.2，14 没有设备，15 系统音频无法授予启动它的 app（见 10.1）。启动后的 10/11/其他 → `on_lost`，沿用 Recorder 的"全部停掉再重开、失败每 3 秒重试"；启动前的 12 → `CapturePermissionError`，错误文本含 "System Audio Recording permission"，菜单据此显示"Allow System Audio Recording…"。启动前的 15 也是 `CapturePermissionError`，但文本故意不含该提示词（去系统设置也没用），而是让用户改从 Terminal 或 .app 启动。
 
 ### 10.3 与前面设计的差异
 
 - **权限查询放在 Swift 助手里**（`permissions` 模式；麦克风用 AVCaptureDevice，系统音频用私有 TCC SPI `TCCAccessPreflight/TCCAccessRequest` + `kTCCServiceAudioCapture`，dlopen 加载，缺符号时返回 unknown）。所以 Python 只依赖 `pyobjc-framework-Cocoa`，不需要 AVFoundation / UserNotifications 的 PyObjC 包。pystray 在 mac 上不再安装。
 - 通知用 `osascript display notification`（2.3 的 UNUserNotificationCenter 需要签名的 bundle）。
-- 首次启动：法律提示（NSAlert）→ 权限说明（NSAlert，说明权限会显示成终端的名字）→ `permissions --request` 依次弹两个系统授权 → 通知"在菜单栏右上角"。2.4 第 1 步（从 DMG 运行的位置检查）不适用，没做。
+- 首次启动：法律提示（NSAlert）→ 权限说明（NSAlert，说明权限会显示成终端的名字）→ `permissions --request` 依次弹两个系统授权 → 通知"在菜单栏右上角"。2.4 第 1 步（从 DMG 运行的位置检查）只做了一半：从 `/Volumes/` 或 AppTranslocation 路径运行时，`setup claude --write` 和菜单的 Connect to Claude 拒绝写入并提示先拖进"应用程序"；启动时还不提示。以 .app 运行时权限说明不再提终端。
 - 2.1 的"录制时长显示在图标旁"、2.2 的 SF Symbols 只做了部分（菜单项有 SF Symbol 图标，状态行没有计时）。
 - "Check for Updates…" 弹窗提示 `uv tool upgrade audio-notes`，可选打开 Releases 页。
 - App Nap：会话在采集时持有 `NSActivityUserInitiated`，暂停/停止时释放。
@@ -286,14 +288,34 @@ flowchart LR
 13. 没有 Dock 图标；首次依次出现：法律提示 → 权限说明 → 两个系统弹窗 → "在菜单栏"通知。NSAlert 带应用图标并出现在最前面。
 14. 图标在浅色、深色、壁纸着色的菜单栏下都清晰（模板图被正确着色）；录制中红点；录制时切换深浅色，铅笔约 0.5 秒内变色；菜单展开时（高亮态）录制图标仍可辨认。
 15. 菜单与 2.2 一致（没有 Open at Login）；状态行灰色；录制/暂停时 "Include Microphone" 禁用；Quit 显示 ⌘Q。
-16. 每一项都能用：开始/暂停/继续/停止；Open Panel… 打开浏览器；Show Transcripts in Finder 打开 `~/Library/Application Support/Audio Notes/sessions`；Connect to Claude… 的确认框（从后台线程切到主线程弹出）能写入配置，Claude Desktop 运行中时提示先退出（`pgrep -x Claude`）；About；Check for Updates…。
-17. "Allow System Audio Recording…" 打开的是"屏幕与系统音频录制"页（URL 锚点 `Privacy_ScreenCapture` 待验证，不对就试 `Privacy_AudioCapture`）；"Allow Microphone Access…" 打开麦克风页。授权后不重启 Audio Notes，下次重试即可录到声音。
+16. 每一项都能用：开始/暂停/继续/停止；Open Panel… 打开浏览器；Show Transcripts in Finder 打开 `~/Library/Application Support/Audio Notes/sessions`；Connect to Claude… 的确认框（从后台线程切到主线程弹出）能写入配置，Claude Desktop 运行中时提示先退出（按 bundle id `com.anthropic.claudefordesktop` 查 NSRunningApplication，再查 `ps` 里的可执行路径；不能用 `pgrep -x Claude`：BSD pgrep 不匹配自己的祖先进程，从 Claude 里启动时就看不到它）；About；Check for Updates…。
+17. "Allow System Audio Recording…" 打开的是"屏幕与系统音频录制"页（URL 锚点 `Privacy_ScreenCapture`，已验证）；"Allow Microphone Access…" 打开麦克风页。授权后不重启 Audio Notes，下次重试即可录到声音。
 18. App Nap：录制时 `pmset -g assertions` 能看到 "Audio Notes is recording and transcribing"，暂停/停止后消失。
 19. 出错时的 osascript 通知能弹出（显示为"脚本编辑器"）。
 20. 菜单 Quit、终端 Ctrl+C 都能干净退出：终端返回提示符，面板端口释放，`audio-notes status` 显示离线。
 
 **D. CLI / Claude**
-21. `audio-notes setup claude --write` 写入的是 `~/.local/bin/audio-notes` 解析后的绝对路径；Claude Desktop 启动 MCP 后能读到转写。
+21. `audio-notes setup claude --write` 写入的是 `~/.local/bin/audio-notes` 解析后的绝对路径（不要从 iCloud 里的 `.venv` 运行 setup，`setup claude` 会对此发出警告）；Claude Desktop 启动 MCP 后能读到转写。
 22. `audio-notes clean --purge-data` 删除 Application Support 和 Logs 下的目录；`--uninstall` 提示 `uv tool uninstall audio-notes`。
 
 **已知风险**：IO 回调里分配内存并经队列写 stdout（若有爆音/丢帧再换环形缓冲）；TCC SPI 未来可能失效（失效时退化为"不知道"，静音无法和无声区分）；从终端运行时 TCC 归属是否总是终端（而不是 python 或助手）需要确认。
+
+### 10.5 真机验证结果（2026-11-18，macOS 26.6.2，Apple Silicon）
+
+| 项 | 结果 | 说明 |
+|---|---|---|
+| A 1–4 构建 | 通过 | Swift 6.2.4（仅 Command Line Tools）；wheel 标记 `macosx_14_0_arm64`，助手有执行位 |
+| B 5 系统音频 | 通过 | 从 Terminal 启动：弹窗写 Terminal，`them` 逐字正确 |
+| B 6 两路 | 通过 | `me` 与 `them` 相差 0.05–0.08 s |
+| B 7 拒绝系统音频 | 通过 | `TCCAccessPreflight` 0=允许、1=拒绝、2=未决定；助手退出 12，`record` 拒绝启动 |
+| B 8 拒绝麦克风 | 通过 | 只录 `them`，日志有警告 |
+| B 9 设备切换 | 软件切换通过 | 1.1–1.7 s 重绑，同一会话文件；有线耳机、AirPods 未测 |
+| B 10 采样率 | 修复后通过 | 44.1 kHz 输出原先被标成 48 kHz（快约 9%）；蓝牙 HFP 未测 |
+| B 11 退出 | 通过 | 停止、暂停/继续、Ctrl+C、`kill -9` 后无残留助手或聚合设备；`record` 现在也把 SIGTERM 当 Ctrl+C 收尾 |
+| B 12 睡眠 | 通过 | 助手每个 0.2–0.4% CPU；时间戳改用跨睡眠计时的时钟，修复后未在真机上重测 |
+| C 13–20 菜单栏 | 通过 | 弹窗图标、Connect to Claude 两处已修；纯浅/深色菜单栏、录制中切换深浅色未测；通知显示为"脚本编辑器" |
+| D 21 Claude | 通过 | Claude Desktop 与 Claude Code 都能调用四个工具；配置文件权限保持 600 |
+| D 22 clean | 通过 | 删除 Application Support 和 Logs 下的目录 |
+| 打包 | 本地通过 | `.app` 内多个可执行文件可行；`codesign --verify`、`hdiutil verify` 通过；iCloud 目录里签名会失败，构建目录要放在 `~/Documents` 之外 |
+
+`status` 现在在正常退出后立即显示离线（`status.json` 的 `stopped`），只有崩溃时才等心跳过期。

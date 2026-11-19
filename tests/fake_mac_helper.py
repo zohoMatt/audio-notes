@@ -3,6 +3,7 @@
 Run as `python fake_mac_helper.py <mode>`; FAKE_HELPER_SCENARIO picks the behaviour of tap / mic:
   normal         ready, then 10 ms frames until stdin closes (exit 0)
   permission     exit 12 at once (permission denied), with a stderr line
+  unavailable    exit 15 at once: system audio cannot be granted to the launching app ("claude")
   device_change  ready, three frames, exit 10
   garbage        ready, then bytes that are not a frame
   hang           never send anything (exits when stdin closes)
@@ -44,7 +45,8 @@ def main() -> int:
         return 0
     if mode == "permissions":
         print(json.dumps({"microphone": os.environ.get("FAKE_MIC", "authorized"),
-                          "system_audio": os.environ.get("FAKE_SYSTEM_AUDIO", "denied")}))
+                          "system_audio": os.environ.get("FAKE_SYSTEM_AUDIO", "denied"),
+                          "responsible": os.environ.get("FAKE_RESPONSIBLE", "Terminal")}))
         return 0
     if mode not in ("tap", "mic"):
         print("usage", file=sys.stderr)
@@ -53,6 +55,10 @@ def main() -> int:
     if scenario == "permission":
         print("audio-notes-capture: permission denied", file=sys.stderr, flush=True)
         return 12
+    if scenario == "unavailable":
+        print("audio-notes-capture: system audio recording (still undetermined after the prompt) "
+              "cannot be granted to claude", file=sys.stderr, flush=True)
+        return 15
 
     stop = threading.Event()
     if scenario != "ignore_stdin":

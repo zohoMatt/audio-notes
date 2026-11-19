@@ -104,11 +104,42 @@ final class TapCapture {
     }
 }
 
+/// How long tap mode waits for the user to answer the first System Audio Recording prompt; the
+/// Python side waits READY_TIMEOUT_S (30 s) for the ready frame.
+private let permissionPromptTimeout: TimeInterval = 25
+
 @available(macOS 14.2, *)
 func runTap(writer: FrameWriter) -> Never {
-    if TCC.audioCaptureStatus() == "denied" {
+    switch TCC.audioCaptureStatus() {
+    case "denied":
         finish(.permissionDenied, "system audio recording permission denied")
+    case "undetermined":
+        // An ungranted tap records silence without failing, so settle the permission first. Off the
+        // main queue: the TCC callback may be delivered on it.
+        DispatchQueue.global(qos: .userInitiated).async {
+            let answer = TCC.requestAudioCapture(timeout: permissionPromptTimeout)
+            switch TCC.audioCaptureStatus() {
+            case "authorized", "unknown":
+                DispatchQueue.main.async { startTap(writer: writer) }
+            case "denied":
+                finish(.permissionDenied, "system audio recording permission denied")
+            default:
+                // Still undetermined: the prompt went unanswered, or (seen with Claude- and
+                // IDE-launched processes) answering it never reaches us because macOS will not
+                // grant the app we were started from.
+                let why = answer == nil ? "no answer to the prompt" : "still undetermined after the prompt"
+                finish(.permissionUnavailable,
+                       "system audio recording (\(why)) cannot be granted to \(Responsible.appName())")
+            }
+        }
+    default:  // authorized, or unknown (TCC SPI unavailable: we cannot tell, so try)
+        startTap(writer: writer)
     }
+    dispatchMain()
+}
+
+@available(macOS 14.2, *)
+private func startTap(writer: FrameWriter) {
     let tap = TapCapture(writer: writer)
     addCleanup { tap.stop() }
     do {
@@ -121,16 +152,13 @@ func runTap(writer: FrameWriter) -> Never {
     exitWhenDeviceDies(tap.outputDevice)
     exitWhenSampleRateChanges(tap.outputDevice)
     stopOnParentRequest()
-    // An ungranted tap records silence without failing. "denied" exits above; "undetermined" is
-    // normal while the first prompt is up, but if it lasts, the prompt was never answered or the
-    // responsible app cannot be granted (seen when started from an app bundle without
-    // NSAudioCaptureUsageDescription): say so instead of recording silence quietly.
+    // Belt and braces: if the permission is revoked or lost after the start, say so instead of
+    // recording silence quietly.
     DispatchQueue.main.asyncAfter(deadline: .now() + 15) {
         let status = TCC.audioCaptureStatus()
         if status != "authorized" && status != "unknown" {
             logLine("warning: system audio recording permission is still \(status); recording silence until it is "
-                    + "granted to the app that started Audio Notes")
+                    + "granted to \(Responsible.appName())")
         }
     }
-    dispatchMain()
 }

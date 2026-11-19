@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import struct
 import subprocess
 import sys
@@ -49,6 +50,7 @@ EXIT_DEVICE_LOST = 11
 EXIT_PERMISSION_DENIED = 12
 EXIT_UNSUPPORTED = 13
 EXIT_NO_DEVICE = 14
+EXIT_PERMISSION_UNAVAILABLE = 15  # macOS will not grant system audio to the app that started us
 
 READY_TIMEOUT_S = 30.0  # mic mode may wait for the user to answer the first permission prompt
 STOP_TIMEOUT_S = 2.0
@@ -199,11 +201,22 @@ def _permission_message(mode: str) -> str:
             "System Settings > Privacy & Security > Microphone")
 
 
+def _unavailable_message(stderr_tail: str) -> str:
+    """Exit 15: the helper's last line ends "... cannot be granted to <app>". Deliberately not
+    SYSTEM_AUDIO_PERMISSION_HINT: an "Allow System Audio Recording…" shortcut cannot help here."""
+    m = re.search(r"cannot be granted to (.+?)\s*$", stderr_tail.strip())
+    app = m.group(1) if m else "the app that started Audio Notes"
+    return (f"macOS does not let {app} record system audio, so Audio Notes would only record silence. "
+            "Quit Audio Notes and start it from Terminal (or open the Audio Notes app) instead.")
+
+
 def error_for_exit(mode: str, code: int, stderr_tail: str = "") -> Exception:
     """Map a helper exit code to the exception the recorder sees (from start() or via on_lost)."""
     detail = f": {stderr_tail}" if stderr_tail else ""
     if code == EXIT_PERMISSION_DENIED:
         return CapturePermissionError(_permission_message(mode))
+    if code == EXIT_PERMISSION_UNAVAILABLE:
+        return CapturePermissionError(_unavailable_message(stderr_tail))
     if code == EXIT_DEVICE_CHANGED:
         return RuntimeError("the default audio device changed")
     if code == EXIT_DEVICE_LOST:
@@ -447,6 +460,7 @@ def list_devices(helper_command: Sequence[str] | None = None) -> dict[str, list[
 class Permissions:
     microphone: str  # authorized / denied / restricted / undetermined / unknown
     system_audio: str  # authorized / denied / undetermined / unknown (private TCC SPI missing)
+    responsible: str = ""  # the app macOS credits these permissions to (e.g. Terminal, claude)
 
     @property
     def microphone_denied(self) -> bool:
@@ -463,4 +477,5 @@ def permissions(request: bool = False, *, helper_command: Sequence[str] | None =
     still undetermined (can take as long as the user needs, hence the long timeout)."""
     args = ["permissions", "--request"] if request else ["permissions"]
     data = run_helper_json(args, helper_command=helper_command, timeout=timeout or (600.0 if request else 15.0))
-    return Permissions(str(data.get("microphone", "unknown")), str(data.get("system_audio", "unknown")))
+    return Permissions(str(data.get("microphone", "unknown")), str(data.get("system_audio", "unknown")),
+                       str(data.get("responsible", "")))

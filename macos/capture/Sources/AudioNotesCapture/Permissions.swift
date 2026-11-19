@@ -64,7 +64,32 @@ enum TCC {
     }
 }
 
-/// `permissions [--request]`: prints {"microphone": status, "system_audio": status} as JSON.
+/// The app macOS credits our permission requests to (TCC's "responsible process"): Terminal for a
+/// shell command, Audio Notes for the packaged app, Claude or an IDE when they started us.
+enum Responsible {
+    private typealias ResponsibleFn = @convention(c) (pid_t) -> pid_t
+
+    /// Executable path of the responsible process, or nil when the private SPI is unavailable.
+    static func executablePath() -> String? {
+        let rtldDefault = UnsafeMutableRawPointer(bitPattern: -2)  // RTLD_DEFAULT
+        guard let symbol = dlsym(rtldDefault, "responsibility_get_pid_responsible_for_pid") else { return nil }
+        let pid = unsafeBitCast(symbol, to: ResponsibleFn.self)(getpid())
+        guard pid > 0 else { return nil }
+        var buffer = [CChar](repeating: 0, count: Int(MAXPATHLEN) * 4)  // PROC_PIDPATHINFO_MAXSIZE
+        guard proc_pidpath(pid, &buffer, UInt32(buffer.count)) > 0 else { return nil }
+        return String(cString: buffer)
+    }
+
+    /// The innermost .app around that executable (its bundle is what TCC records), else its name.
+    static func appName() -> String {
+        guard let path = executablePath() else { return "the app that started Audio Notes" }
+        let parts = (path as NSString).pathComponents
+        if let app = parts.last(where: { $0.hasSuffix(".app") }) { return String(app.dropLast(4)) }
+        return (path as NSString).lastPathComponent
+    }
+}
+
+/// `permissions [--request]`: prints {"microphone": status, "system_audio": status, "responsible": app} as JSON.
 /// With --request, first asks for whatever is still undetermined (one system prompt each).
 func runPermissions(request: Bool) -> Never {
     // Off the main thread: permission callbacks may be delivered on any queue, including main.
@@ -80,6 +105,7 @@ func runPermissions(request: Bool) -> Never {
         printJSON([
             "microphone": Permissions.microphoneStatus(),
             "system_audio": TCC.audioCaptureStatus(),
+            "responsible": Responsible.appName(),
         ])
         exit(ExitCode.ok.rawValue)
     }

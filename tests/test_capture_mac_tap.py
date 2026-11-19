@@ -151,6 +151,18 @@ def test_permission_denied_fails_start_with_a_readable_error(scenario):
     assert "Screen & System Audio Recording" in str(e.value)
 
 
+def test_ungrantable_launch_app_fails_start_and_names_it(scenario):
+    from audio_notes.tray.mac_menu import missing_permissions
+
+    scenario("unavailable")
+    with pytest.raises(CapturePermissionError) as e:
+        TapSource(FAKE, ready_timeout=10).start(lambda c: None, time.monotonic())
+    msg = str(e.value)
+    assert "does not let claude record system audio" in msg and "Terminal" in msg
+    # an "Allow System Audio Recording…" shortcut cannot help here, so the menu must not offer it
+    assert missing_permissions(msg, None, mic_on=False) == (False, False)
+
+
 def test_device_change_after_start_reports_on_lost(scenario):
     scenario("device_change")
     src = TapSource(FAKE, ready_timeout=10)
@@ -228,8 +240,9 @@ def test_list_devices_groups_outputs_and_inputs():
 def test_permissions(monkeypatch):
     monkeypatch.setenv("FAKE_MIC", "authorized")
     monkeypatch.setenv("FAKE_SYSTEM_AUDIO", "denied")
+    monkeypatch.setenv("FAKE_RESPONSIBLE", "iTerm")
     p = mac_tap.permissions(helper_command=FAKE)
-    assert p.system_audio_denied and not p.microphone_denied
+    assert p.system_audio_denied and not p.microphone_denied and p.responsible == "iTerm"
     monkeypatch.setenv("FAKE_MIC", "restricted")
     assert mac_tap.permissions(helper_command=FAKE).microphone_denied
 

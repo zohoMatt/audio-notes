@@ -124,11 +124,55 @@ def test_server_command_frozen_prefers_console_sibling(tmp_path, monkeypatch):
 
     tray, cli = tmp_path / "audio-notes-tray.exe", tmp_path / "audio-notes.exe"
     tray.write_text("")
+    monkeypatch.setattr(setup_cli.sys, "platform", "win32")
     monkeypatch.setattr(setup_cli.sys, "frozen", True, raising=False)
     monkeypatch.setattr(setup_cli.sys, "executable", str(tray))
     assert setup_cli.server_command() == (str(tray.resolve()), ["mcp"])  # no sibling: fall back
     cli.write_text("")
     assert setup_cli.server_command() == (str(cli.resolve()), ["mcp"])
+
+
+def test_server_command_mac_app_points_at_the_cli_inside_the_bundle(tmp_path, monkeypatch):
+    from audio_notes.cli import setup as setup_cli
+
+    macos = tmp_path / "Audio Notes.app" / "Contents" / "MacOS"
+    macos.mkdir(parents=True)
+    app_exe, cli = macos / "Audio Notes", macos / "audio-notes"
+    app_exe.write_text("")
+    cli.write_text("")
+    monkeypatch.setattr(setup_cli.sys, "platform", "darwin")
+    monkeypatch.setattr(setup_cli.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(setup_cli.sys, "executable", str(app_exe))
+    assert setup_cli.server_command() == (str(cli.resolve()), ["mcp"])
+
+
+@pytest.mark.parametrize("command, unstable", [
+    ("/Volumes/Audio Notes/Audio Notes.app/Contents/MacOS/audio-notes", True),
+    ("/private/var/folders/x/AppTranslocation/ABC/d/Audio Notes.app/Contents/MacOS/audio-notes", True),
+    ("/Applications/Audio Notes.app/Contents/MacOS/audio-notes", False),
+])
+def test_unstable_location_on_mac(monkeypatch, command, unstable):
+    from audio_notes.cli import setup as setup_cli
+
+    monkeypatch.setattr(setup_cli.sys, "platform", "darwin")
+    assert setup_cli.unstable_location(command) is unstable
+    monkeypatch.setattr(setup_cli.sys, "platform", "win32")
+    assert setup_cli.unstable_location(command) is False
+
+
+def test_merge_config_refuses_a_disk_image_path(tmp_path, monkeypatch):
+    from audio_notes.cli import setup as setup_cli
+
+    cfg = tmp_path / "Claude" / "claude_desktop_config.json"
+    cfg.parent.mkdir()
+    cfg.write_text('{"keep": 1}\n')
+    monkeypatch.setattr(setup_cli.sys, "platform", "darwin")
+    monkeypatch.setattr(setup_cli, "server_command",
+                        lambda: ("/Volumes/Audio Notes/Audio Notes.app/Contents/MacOS/audio-notes", ["mcp"]))
+    with pytest.raises(ValueError, match="Applications"):
+        setup_cli.merge_config(cfg)
+    assert cfg.read_text() == '{"keep": 1}\n'  # untouched, no backup
+    assert list(cfg.parent.iterdir()) == [cfg]
 
 
 def test_setup_write_merges_and_backs_up(tmp_path):

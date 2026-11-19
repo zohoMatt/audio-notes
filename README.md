@@ -73,6 +73,24 @@ optionally start with Windows and add the `audio-notes` command to your PATH.
 > Install [uv](https://docs.astral.sh/uv/) first if you don't have it. uv manages Python for you.
 > With uv, connect to Claude yourself (see [Connect to Claude](#connect-to-claude)).
 
+#### macOS (Apple Silicon, macOS 14.2 or later)
+
+Audio Notes lives in the menu bar (top right) and has no Dock icon. Two ways to install:
+
+- **App (DMG, from the next release on).** Download `Audio-Notes-<version>-arm64.dmg` from GitHub Releases and drag
+  Audio Notes into Applications. Open it from there, not from the disk image. The app is not
+  yet notarized, so macOS blocks the first launch: open System Settings > Privacy & Security and
+  click **Open Anyway**.
+- **uv.** `uv tool install git+https://github.com/zohoMatt/audio-notes` (builds the capture helper,
+  so it needs the Command Line Tools: `xcode-select --install`), then run `audio-notes tray` in
+  Terminal or iTerm.
+
+macOS asks for Microphone and System Audio Recording permission. It grants them to the app you
+started Audio Notes from: Audio Notes itself, or your terminal. **Start it from Terminal, iTerm or
+the app, not from an IDE or from Claude:** macOS won't grant System Audio Recording there, and
+Audio Notes then refuses to record instead of recording silence. `audio-notes devices` shows
+which app the permissions go to.
+
 ### 2. Open the panel
 
 Start **Audio Notes** from the Start Menu (or `audio-notes tray`). The icon
@@ -169,8 +187,10 @@ law forbids it.
   built-in echo cancellation reduce this, but don't count on it.
 - Applications that open the audio device in **WASAPI exclusive mode** bypass the shared mixer;
   their audio is **not captured**.
-- Windows only for now.
-- The installer is unsigned.
+- Windows and macOS (Apple Silicon, 14.2+). Intel Macs and Linux are not supported.
+- The Windows installer is unsigned; the macOS app is not yet notarized.
+- macOS: System Audio Recording can't be granted when Audio Notes is started from an IDE or from
+  Claude; start it from a terminal or the app.
 
 ## Development
 

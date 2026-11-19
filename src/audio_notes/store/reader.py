@@ -210,7 +210,8 @@ class StoreReader:
             d = json.loads(paths.status_path().read_text(encoding="utf-8"))
             hb = d.get("last_heartbeat")
             hb = float(hb) if hb is not None else None
-            alive = hb is not None and (time.time() - hb) <= self._stale_after
+            alive = (hb is not None and (time.time() - hb) <= self._stale_after
+                     and not d.get("stopped", False))
             return Status(
                 recording=bool(d.get("recording", False)) and alive,
                 session_id=d.get("session_id"),

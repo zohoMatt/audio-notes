@@ -20,15 +20,29 @@ NOTICE = (
 )
 
 PERMISSIONS_TITLE = "Audio Notes needs two permissions"
-MAC_PERMISSIONS_NOTICE = (
+_MAC_PERMISSIONS_ASK = (
     "macOS will now ask for:\n\n"
     "• Microphone: to transcribe your side of a conversation.\n"
     "• System Audio Recording: to transcribe what the others say (the sound this Mac plays).\n\n"
+)
+# macOS credits the permissions to the app that started us: Audio Notes itself when it runs as
+# Audio Notes.app, otherwise the terminal (or whichever app) that launched `audio-notes tray`.
+_MAC_PERMISSIONS_FROM_TERMINAL = (
     "Because you started Audio Notes from a terminal, the prompts and the entries in System Settings "
     "> Privacy & Security name that terminal app rather than Audio Notes.\n\n"
+)
+_MAC_PERMISSIONS_TAIL = (
     "If you deny system audio, recordings stay silent; the menu bar icon then shows a warning and "
     "a shortcut to the right System Settings page. Everything stays on this Mac."
 )
+
+
+def mac_permissions_notice(packaged: bool | None = None) -> str:
+    """The permission explanation; `packaged` = running as Audio Notes.app (default: detect)."""
+    if packaged is None:
+        packaged = bool(getattr(sys, "frozen", False))
+    middle = "" if packaged else _MAC_PERMISSIONS_FROM_TERMINAL
+    return _MAC_PERMISSIONS_ASK + middle + _MAC_PERMISSIONS_TAIL
 
 # A dialog takes (title, message) and returns True when the user accepts.
 Dialog = Callable[[str, str], bool]
@@ -85,7 +99,7 @@ def ensure_permissions_explained(dialog: Dialog, request: Callable[[], object]) 
     p = permissions_flag_path()
     if p.is_file():
         return False
-    accepted = dialog(PERMISSIONS_TITLE, MAC_PERMISSIONS_NOTICE)
+    accepted = dialog(PERMISSIONS_TITLE, mac_permissions_notice())
     _write_flag(p)
     if accepted:
         try:

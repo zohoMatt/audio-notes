@@ -72,8 +72,8 @@ class StatusPublisher:
                 self._write_locked()
 
     def close(self) -> None:
-        """Final write (not recording) and stop beating. Readers see the process as gone once
-        the last heartbeat goes stale."""
+        """Final write (not recording, `stopped`) and stop beating. Readers see the process as
+        gone right away; after a crash (no final write) they do once the heartbeat goes stale."""
         with self._lock:
             if self._closed:
                 return
@@ -112,6 +112,9 @@ class StatusPublisher:
             "paused": self._paused,
             "last_heartbeat": time.time(),
             "pid": os.getpid(),
+            # The final write from close(): readers report the process as gone at once instead
+            # of waiting for the heartbeat to go stale.
+            "stopped": self._closed,
         }
         tmp = self._path.with_name(self._path.name + ".tmp")
         tmp.write_text(json.dumps(data), encoding="utf-8")

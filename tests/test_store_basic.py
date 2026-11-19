@@ -108,7 +108,7 @@ def test_status_alive_and_active():
     assert r.read_status().last_heartbeat > t1  # heartbeat thread refreshes
     w.close()
     st = r.read_status()
-    assert st.recording is False and st.alive is True
+    assert st.recording is False and st.alive is False  # a closed writer's process reads as gone at once
     assert not r.list_sessions()[0].is_active
 
 
@@ -214,7 +214,9 @@ def test_idle_daemon_publisher_is_alive_but_not_recording():
     st = r.read_status()
     assert st.alive and not st.recording  # the daemon keeps beating after the session ends
     pub.close()
-    assert r.read_status().recording is False
+    st = r.read_status()
+    assert st.recording is False
+    assert st.alive is False  # gone right after a clean exit, without waiting for staleness
 
 
 def test_follower_switches_to_a_newer_session_after_finishing_the_old_one():

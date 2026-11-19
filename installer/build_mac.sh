@@ -20,7 +20,6 @@
 #                             ~/Documents, point both outside ~/Documents: iCloud tags .app folders
 #                             with Finder info (codesign then fails with "resource fork, Finder
 #                             information, or similar detritus not allowed") and hides venvs.
-#   DMGBUILD_SPEC             what `uvx --from` installs for dmgbuild (default: dmgbuild==2.0.0)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -107,7 +106,7 @@ fi
 echo "==> DMG"
 DMG="$DIST/Audio-Notes-${VERSION//+/-}-arm64.dmg"
 rm -f "$DMG" "$DMG.sha256"
-uvx --from "${DMGBUILD_SPEC:-dmgbuild==2.0.0}" dmgbuild \
+uv run --no-sync dmgbuild \
     -s installer/dmg_settings.py -D app="$APP" "Audio Notes" "$DMG"
 
 if [[ "$IDENTITY" != - ]]; then

@@ -50,7 +50,27 @@ def claude_desktop_config_path() -> Path:
 
 
 NOT_INSTALLED_EXIT = 3  # `setup claude --write` exit code when Claude Desktop is not installed
-CLI_EXE_NAME = "audio-notes.exe"  # console build; the tray exe (windowed) has no `mcp` command
+
+
+def cli_exe_name() -> str:
+    """The packaged console CLI next to the tray executable, which Claude's config points at.
+
+    Windows: audio-notes.exe beside the windowed audio-notes-tray.exe (which has no `mcp`).
+    macOS: Audio Notes.app/Contents/MacOS/audio-notes beside the menu bar app `Audio Notes`."""
+    return "audio-notes.exe" if sys.platform == "win32" else "audio-notes"
+
+
+def unstable_location(command: str) -> bool:
+    """macOS: the app runs from a mounted disk image or a Gatekeeper-translocated copy, so the
+    path would stop working once the DMG is ejected or the app is moved."""
+    return sys.platform == "darwin" and (command.startswith("/Volumes/") or "/AppTranslocation/" in command)
+
+
+UNSTABLE_LOCATION_MESSAGE = (
+    "Audio Notes is running from a disk image or a temporary location, and Claude would lose it "
+    "once that goes away. Drag Audio Notes into the Applications folder, open it from there, "
+    "then connect to Claude again."
+)
 
 
 class ClaudeNotInstalled(Exception):
@@ -112,8 +132,8 @@ def server_command() -> tuple[str, list[str]]:
     """Absolute command + args that start the MCP server (Claude Desktop may lack PATH)."""
     if getattr(sys, "frozen", False):  # packaged exe
         me = Path(sys.executable).resolve()
-        # The tray runs as audio-notes-tray.exe, which cannot serve MCP: point at its console sibling.
-        cli = me.with_name(CLI_EXE_NAME)
+        # Point at the console CLI sibling (see cli_exe_name), not the tray executable.
+        cli = me.with_name(cli_exe_name())
         return str(cli if cli.exists() else me), ["mcp"]
     exe = shutil.which("audio-notes")
     if exe:
@@ -208,6 +228,9 @@ def merge_config(config_path: Path) -> Path | None:
     Never creates Claude's own config directory: raises ClaudeNotInstalled if it is missing."""
     if not claude_desktop_installed(config_path):
         raise ClaudeNotInstalled(f"Claude Desktop does not seem to be installed ({config_path.parent} not found)")
+    entry = build_entry()
+    if unstable_location(entry["command"]):
+        raise ValueError(UNSTABLE_LOCATION_MESSAGE)
     data: dict = {}
     backup: Path | None = None
     if config_path.exists():
@@ -223,7 +246,7 @@ def merge_config(config_path: Path) -> Path | None:
     if not isinstance(servers, dict):
         raise ValueError("'mcpServers' is not a JSON object")
     servers.pop(SERVER_NAME, None)  # entry written by older versions under the command name
-    servers[DESKTOP_SERVER_NAME] = build_entry()
+    servers[DESKTOP_SERVER_NAME] = entry
     write_json_atomic(config_path, data)
     return backup
 
@@ -244,7 +267,10 @@ def register(app: typer.Typer) -> None:
         typer.echo("")
         typer.echo("Claude Code:")
         typer.echo(claude_mcp_add_command())
-        warning = hidden_venv_warning(snippet["mcpServers"][DESKTOP_SERVER_NAME]["command"])
+        command = snippet["mcpServers"][DESKTOP_SERVER_NAME]["command"]
+        warning = hidden_venv_warning(command)
+        if unstable_location(command):
+            warning = "WARNING: " + UNSTABLE_LOCATION_MESSAGE
         if warning:
             typer.echo("")
             typer.echo(warning, err=True)

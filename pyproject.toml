@@ -53,7 +53,7 @@ Issues = "https://github.com/zohoMatt/audio-notes/issues"
 
 [dependency-groups]
 dev = ["pytest", "httpx"]
-build = ["pyinstaller>=6.10"]
+build = ["pyinstaller>=6.10", "dmgbuild==2.0.0; sys_platform == 'darwin' and python_version >= '3.11'"]  # installer/build_mac.sh
 
 [tool.hatch.version]
 source = "vcs"

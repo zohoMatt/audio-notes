@@ -30,6 +30,25 @@ def _setup_logging(to_file: bool = False) -> None:
     )
 
 
+def _sigterm_stops_like_ctrl_c() -> None:
+    """Make SIGTERM (`kill`, a service manager, a closing terminal session) end the command the way
+    Ctrl+C does, so the `finally` blocks run and pending transcription is finished and written.
+    Only the main thread can install handlers; elsewhere (tests calling the command) do nothing."""
+    import signal
+    import threading
+
+    if threading.current_thread() is not threading.main_thread():
+        return
+
+    def _raise(signum, frame):
+        raise KeyboardInterrupt
+
+    try:
+        signal.signal(signal.SIGTERM, _raise)
+    except (ValueError, OSError):
+        pass
+
+
 def _wait_until_interrupted() -> None:
     try:
         while True:
@@ -83,6 +102,7 @@ def register(app: typer.Typer) -> None:
                 # Developer mode: like `record`, no first-run notice; start recording from the panel.
                 typer.echo(f"Panel: {panel.url}")
                 typer.echo("Press Ctrl+C to stop.")
+                _sigterm_stops_like_ctrl_c()
                 _wait_until_interrupted()
                 ran = True
             else:
@@ -139,6 +159,7 @@ def register(app: typer.Typer) -> None:
             raise typer.Exit(1)
         session_id = recorder.session_id
         typer.echo(f"Recording session {session_id} -> {recorder.session_path}")
+        _sigterm_stops_like_ctrl_c()
         try:
             if file_sources:
                 for src in file_sources:

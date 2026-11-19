@@ -32,6 +32,10 @@ enum ExitCode: Int32 {
     case permissionDenied = 12  // microphone / system audio recording permission denied
     case unsupported = 13  // macOS too old for this mode (process taps need 14.2)
     case noDevice = 14  // no input / output device at all
+    // System audio recording is still undetermined after asking: macOS will not grant it to the
+    // app we were started from (seen with Claude / IDE-launched processes). The last stderr line
+    // names that app ("... cannot be granted to <name>").
+    case permissionUnavailable = 15
 }
 
 private let exitLock = NSLock()

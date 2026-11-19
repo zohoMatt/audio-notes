@@ -173,6 +173,14 @@ def test_permission_explanation_shows_once_and_requests():
                                                   lambda: pytest.fail("requested twice")) is False
 
 
+def test_permission_explanation_names_the_terminal_only_outside_the_app():
+    from_terminal = first_run.mac_permissions_notice(packaged=False)
+    as_app = first_run.mac_permissions_notice(packaged=True)
+    assert "terminal" in from_terminal and "terminal" not in as_app
+    for text in (from_terminal, as_app):
+        assert "System Audio Recording" in text and "Everything stays on this Mac" in text
+
+
 def test_permission_explanation_declined_is_not_repeated_and_request_errors_are_swallowed():
     assert first_run.ensure_permissions_explained(lambda t, m: False, lambda: pytest.fail("no request")) is True
     assert first_run.permissions_flag_path().is_file()
