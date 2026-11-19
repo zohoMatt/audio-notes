@@ -104,17 +104,19 @@ The first time Claude uses an Audio Notes tool it asks for permission. Click **A
 
 ## Connect to Claude
 
-**Quit Claude Desktop completely before connecting, then start it again** (Windows: also quit it
-from the tray; macOS: ⌘Q). Claude Desktop rewrites its config file while running and when it exits,
-which would erase the entry.
+1. **Quit Claude Desktop completely.** Windows: also quit it from its icon in the notification
+   area. macOS: ⌘Q. Claude Desktop rewrites its config file while it runs and when it exits, so an
+   entry added while it is open gets erased.
+2. **Add Audio Notes to Claude's config**, either by choosing **Connect to Claude…** in the tray /
+   menu bar menu, or from the command line:
 
-```bash
-audio-notes setup claude                 # print the Claude Desktop entry and the `claude mcp add` command for Claude Code
-audio-notes setup claude --write         # merge it into Claude Desktop's config (asks first, makes a backup)
-audio-notes setup claude --write --yes   # same, without asking (exit code 3: Claude Desktop not installed)
-```
-
-You can also choose **Connect to Claude…** in the tray / menu bar menu.
+   ```bash
+   audio-notes setup claude                 # print the Claude Desktop entry and the `claude mcp add` command for Claude Code
+   audio-notes setup claude --write         # merge it into Claude Desktop's config (asks first, makes a backup)
+   audio-notes setup claude --write --yes   # same, without asking (exit code 3: Claude Desktop not installed)
+   ```
+3. **Start Claude Desktop.** Click **+** in the message box, open **Connectors**, and check that
+   **Audio Notes** is listed and turned on.
 
 The entry is called **Audio Notes** and points at the absolute path of the `audio-notes` program,
 so it works even when Claude starts it with an incomplete PATH. Claude Desktop keeps its config in
