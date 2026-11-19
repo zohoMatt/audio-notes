@@ -154,11 +154,15 @@ def build_plan(*, keep_backups: bool, uninstall: bool, purge_data: bool,
     return plan
 
 
+def _is_log_dir(d: Path) -> bool:
+    from audio_notes import paths
+
+    return sys.platform == "darwin" and d == paths.log_dir() and d != paths.data_dir()
+
+
 # ---- actions ----------------------------------------------------------------
 def _write_json(path: Path, data: dict) -> None:
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    os.replace(tmp, path)
+    setup_cli.write_json_atomic(path, data)
 
 
 def remove_servers(path: Path, names: list[str], *, project: str | None = None) -> None:
@@ -222,7 +226,8 @@ def register(app: typer.Typer) -> None:
         if plan.uninstaller:
             typer.echo(f"  installed app   via {plan.uninstaller}")
         for d in plan.data_dirs:
-            typer.echo(f"  transcripts     {d}  (deleted permanently)")
+            label = "logs" if _is_log_dir(d) else "transcripts"
+            typer.echo(f"  {label:<15} {d}  (deleted permanently)")
         if dry_run:
             return
         if not yes and not typer.confirm("Proceed?"):

@@ -362,22 +362,7 @@ def test_log_dir_is_the_data_dir_elsewhere(monkeypatch, tmp_path):
     assert paths.log_dir() == paths.data_dir() == tmp_path
 
 
-def test_claude_desktop_running_on_macos(monkeypatch):
-    from audio_notes.cli import setup as setup_cli
-
-    calls = []
-
-    def fake_run(cmd, **kw):
-        calls.append(cmd)
-        return subprocess.CompletedProcess(cmd, 0 if fake_run.running else 1)
-
-    monkeypatch.setattr(sys, "platform", "darwin")
-    monkeypatch.setattr(subprocess, "run", fake_run)
-    fake_run.running = True
-    assert setup_cli.claude_desktop_running() is True
-    fake_run.running = False
-    assert setup_cli.claude_desktop_running() is False
-    assert calls[0] == ["pgrep", "-x", "Claude"]
+# claude_desktop_running() on macOS: see tests/test_cli_setup.py.
 
 
 def test_devices_command_on_macos(monkeypatch):

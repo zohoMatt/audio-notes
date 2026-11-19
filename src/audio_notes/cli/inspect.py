@@ -51,7 +51,8 @@ def register(app: typer.Typer) -> None:
                 time.sleep(0.5)
                 for kind, value in follower.poll():
                     if kind == "session":
-                        typer.echo(f"--- new session {value} ---")
+                        name = reader.stream_name(value)
+                        typer.echo(f"--- new session {f'{name} ({value})' if name else value} ---")
                     else:
                         typer.echo(fmt_segment(value))
         except KeyboardInterrupt:

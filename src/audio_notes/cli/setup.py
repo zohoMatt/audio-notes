@@ -57,18 +57,41 @@ class ClaudeNotInstalled(Exception):
     """Claude Desktop's config directory does not exist, so Claude Desktop is not installed."""
 
 
-MAC_CLAUDE_PROCESS = "Claude"  # Claude Desktop's main process (Claude.app/Contents/MacOS/Claude)
+MAC_CLAUDE_BUNDLE_ID = "com.anthropic.claudefordesktop"
+# Claude Desktop's main executable, wherever Claude.app is installed. The Claude Code CLI runs as
+# "claude" / "node", and the app's helpers live under Contents/Frameworks, so neither matches.
+MAC_CLAUDE_EXE_SUFFIX = "/Claude.app/Contents/MacOS/Claude"
+
+
+def _mac_running_by_bundle_id() -> bool:
+    try:
+        from AppKit import NSRunningApplication
+    except Exception:  # pyobjc missing or broken: fall back to the process list
+        return False
+    try:
+        return len(NSRunningApplication.runningApplicationsWithBundleIdentifier_(MAC_CLAUDE_BUNDLE_ID)) > 0
+    except Exception:
+        return False
+
+
+def _mac_running_by_process_list() -> bool:
+    # Not `pgrep -x Claude`: BSD pgrep never matches its own ancestors, and when Claude Code in
+    # the desktop app runs us, Claude Desktop is one. Match the executable path in ps instead.
+    # This also covers a process without a run loop, where NSRunningApplication can be stale.
+    import subprocess
+
+    try:
+        out = subprocess.run(["ps", "-axo", "comm="], capture_output=True, text=True, timeout=10).stdout
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return any(line.strip().endswith(MAC_CLAUDE_EXE_SUFFIX) for line in out.splitlines())
 
 
 def claude_desktop_running() -> bool:
     import subprocess
 
     if sys.platform == "darwin":
-        # Exact, case-sensitive match: the Claude Code CLI runs as "claude" / "node", not "Claude".
-        try:
-            return subprocess.run(["pgrep", "-x", MAC_CLAUDE_PROCESS], capture_output=True, timeout=10).returncode == 0
-        except (OSError, subprocess.SubprocessError):
-            return False
+        return _mac_running_by_bundle_id() or _mac_running_by_process_list()
     if sys.platform != "win32":
         return False
     try:
@@ -101,6 +124,51 @@ def server_command() -> tuple[str, list[str]]:
     return str(Path(sys.executable).resolve()), ["-m", "audio_notes", "mcp"]
 
 
+def _venv_root(command: Path) -> Path | None:
+    for d in command.parents:
+        if (d / "pyvenv.cfg").is_file():
+            return d
+    return None
+
+
+def _is_hidden(p: Path) -> bool:
+    import stat
+
+    try:
+        return bool(getattr(os.stat(p), "st_flags", 0) & stat.UF_HIDDEN)
+    except OSError:
+        return False
+
+
+def hidden_venv_warning(command: str) -> str | None:
+    """Why `command` may not start under Claude Desktop on macOS, or None.
+
+    iCloud Drive ("Desktop & Documents") sets the hidden flag on dot-folders such as `.venv` a few
+    seconds after they appear, and Python (3.12.14+, 3.13+) then skips their `.pth` files, so the
+    editable install vanishes: `No module named 'audio_notes'`. `uv run` re-syncs the venv first,
+    which hides the problem when testing from a terminal, but Claude Desktop starts the command
+    directly."""
+    if sys.platform != "darwin" or getattr(sys, "frozen", False):
+        return None
+    venv = _venv_root(Path(command))
+    if venv is None:
+        return None
+    pth = list(venv.glob("lib/python*/site-packages/*.pth"))
+    hidden = _is_hidden(venv) or any(_is_hidden(p) for p in pth)
+    try:
+        rel = venv.relative_to(Path.home()).parts
+    except ValueError:
+        rel = ()
+    synced = bool(rel) and rel[0] in ("Documents", "Desktop") and any(p.startswith(".") for p in rel[1:])
+    if not (hidden or synced):
+        return None
+    why = ("its .pth files are marked hidden, so Python skips them"
+           if hidden else "iCloud Drive may mark it hidden, and Python then skips its .pth files")
+    return (f"WARNING: {command} runs from the virtualenv {venv}; {why} and the MCP server fails with "
+            "\"No module named 'audio_notes'\" when Claude starts it. Install it as a tool instead "
+            "(`uv tool install .`), then run `audio-notes setup claude` from there.")
+
+
 def build_entry() -> dict:
     command, args = server_command()
     return {"command": command, "args": args}
@@ -113,6 +181,25 @@ def _quote(s: str) -> str:
 def claude_mcp_add_command() -> str:
     command, args = server_command()
     return " ".join(["claude", "mcp", "add", SERVER_NAME, "--", _quote(command), *map(_quote, args)])
+
+
+def write_json_atomic(path: Path, data: dict) -> None:
+    """Replace `path` with `data` in one step, keeping the file's permissions.
+
+    Claude Desktop keeps its config owner-only (0600); a plain write + replace would leave it
+    world-readable (umask 022). A new file gets 0600."""
+    import stat
+
+    try:
+        mode = stat.S_IMODE(path.stat().st_mode)
+    except OSError:
+        mode = 0o600
+    tmp = path.with_name(path.name + ".tmp")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.write(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
+    os.chmod(tmp, mode)
+    os.replace(tmp, path)
 
 
 def merge_config(config_path: Path) -> Path | None:
@@ -137,9 +224,7 @@ def merge_config(config_path: Path) -> Path | None:
         raise ValueError("'mcpServers' is not a JSON object")
     servers.pop(SERVER_NAME, None)  # entry written by older versions under the command name
     servers[DESKTOP_SERVER_NAME] = build_entry()
-    tmp =config_path.with_name(config_path.name + ".tmp")
-    tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    os.replace(tmp, config_path)
+    write_json_atomic(config_path, data)
     return backup
 
 
@@ -159,6 +244,10 @@ def register(app: typer.Typer) -> None:
         typer.echo("")
         typer.echo("Claude Code:")
         typer.echo(claude_mcp_add_command())
+        warning = hidden_venv_warning(snippet["mcpServers"][DESKTOP_SERVER_NAME]["command"])
+        if warning:
+            typer.echo("")
+            typer.echo(warning, err=True)
         if not write:
             typer.echo("")
             typer.echo("Run with --write to merge the entry into the Claude Desktop config.")
@@ -183,10 +272,11 @@ def register(app: typer.Typer) -> None:
             typer.echo(f"Backup: {backup}")
         typer.echo(f"Updated {path}.")
         if claude_desktop_running():
+            where = "Cmd+Q" if sys.platform == "darwin" else "also from the tray"
             typer.echo(
-                "WARNING: Claude Desktop is running and rewrites this file when it exits, which can "
-                "erase the change. Quit it completely (also from the tray), run this command again, "
-                "then start Claude Desktop.",
+                "WARNING: Claude Desktop is running and rewrites this file (while running and when it "
+                f"exits), which can erase the change. Quit it completely ({where}), run this command "
+                "again, then start Claude Desktop.",
                 err=True,
             )
         else:
