@@ -10,7 +10,7 @@ macos/capture/.swiftpm/
 src/audio_notes/capture/bin/
 
 # Internal planning docs (kept locally, not published)
-ARCHITECTURE.md
-DEV_TRACKS.md
-docs/MACOS.md
-REQUIREMENTS.md
+/ARCHITECTURE.md
+/DEV_TRACKS.md
+/docs/MACOS.md
+/REQUIREMENTS.md
