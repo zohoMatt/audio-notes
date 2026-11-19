@@ -115,15 +115,15 @@ jobs:
         id: hash
         shell: pwsh
         run: |
-          $f = Get-ChildItem dist/audio-notes-setup-*.exe | Select-Object -First 1
+          $f = Get-ChildItem dist/Audio-Notes-*-windows-x64-setup.exe | Select-Object -First 1
           $h = (Get-FileHash $f.FullName -Algorithm SHA256).Hash.ToLower()
-          "### Installer SHA256`n`n``$h  $($f.Name)```n" | Out-File -FilePath release-body.md -Encoding utf8
+          "### Windows installer SHA256`n`n``$h  $($f.Name)```n" | Out-File -FilePath release-body.md -Encoding utf8
           Get-Content release-body.md
       - name: Keep the installer as a workflow artifact (also on manual runs)
         uses: actions/upload-artifact@v4.6.2
         with:
           name: installer
-          path: dist/audio-notes-setup-*.exe
+          path: dist/Audio-Notes-*-windows-x64-setup.exe
           if-no-files-found: error
       - name: Detect pre-release tag (v0.1.0a1, v0.1.0rc1, v0.1.0.dev1)
         id: pre
@@ -136,7 +136,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2.2.2
         with:
-          files: dist/audio-notes-setup-*.exe
+          files: dist/Audio-Notes-*-windows-x64-setup.exe
           body_path: release-body.md
           generate_release_notes: true
           prerelease: ${{ steps.pre.outputs.prerelease == 'true' }}
@@ -211,7 +211,7 @@ jobs:
           {
             echo "### macOS DMG SHA256"
             echo
-            echo "\`$(cat dist/Audio-Notes-*-arm64.dmg.sha256)\`"
+            echo "\`$(cat dist/Audio-Notes-*-macos-arm64.dmg.sha256)\`"
             echo
             if [ "$HAS_SIGNING" = true ] && [ "$HAS_NOTARY" = true ]; then
               echo "Signed with a Developer ID and notarized by Apple."
@@ -228,8 +228,8 @@ jobs:
         with:
           name: installer-mac
           path: |
-            dist/Audio-Notes-*-arm64.dmg
-            dist/Audio-Notes-*-arm64.dmg.sha256
+            dist/Audio-Notes-*-macos-arm64.dmg
+            dist/Audio-Notes-*-macos-arm64.dmg.sha256
           if-no-files-found: error
       - name: Detect pre-release tag (v0.1.0a1, v0.1.0rc1, v0.1.0.dev1)
         id: pre
@@ -242,8 +242,8 @@ jobs:
         uses: softprops/action-gh-release@v2.2.2
         with:
           files: |
-            dist/Audio-Notes-*-arm64.dmg
-            dist/Audio-Notes-*-arm64.dmg.sha256
+            dist/Audio-Notes-*-macos-arm64.dmg
+            dist/Audio-Notes-*-macos-arm64.dmg.sha256
           body_path: release-body-mac.md
           append_body: true
           prerelease: ${{ steps.pre.outputs.prerelease == 'true' }}

@@ -154,7 +154,7 @@ Info.plist 关键项：
 ### 4.3 DMG
 
 - 用 `dmgbuild`（Python，配置文件可放仓库，CI 里好跑）：窗口里放 App 图标和"应用程序"快捷方式，背景图一个箭头。
-- 文件名：`Audio-Notes-<version>-arm64.dmg`，Release 说明里附 SHA256（同 Windows）。
+- 文件名：`Audio-Notes-<version>-macos-arm64.dmg`，Release 说明里附 SHA256（同 Windows）。
 - 之后可以加自己的 Homebrew tap：`brew install --cask zohomatt/tap/audio-notes`，成本很低，开发者用户喜欢。
 
 ### 4.4 App 图标

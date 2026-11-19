@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build dist/Audio Notes.app and dist/Audio-Notes-<version>-arm64.dmg (macOS 14.2+, Apple Silicon).
+# Build dist/Audio Notes.app and dist/Audio-Notes-<version>-macos-arm64.dmg (macOS 14.2+, Apple Silicon).
 #
 #   installer/build_mac.sh [--skip-dmg]        (from anywhere; works in the repo root)
 #
@@ -104,7 +104,7 @@ if [[ "$SKIP_DMG" == 1 ]]; then
 fi
 
 echo "==> DMG"
-DMG="$DIST/Audio-Notes-${VERSION//+/-}-arm64.dmg"
+DMG="$DIST/Audio-Notes-${VERSION//+/-}-macos-arm64.dmg"
 rm -f "$DMG" "$DMG.sha256"
 uv run --no-sync dmgbuild \
     -s installer/dmg_settings.py -D app="$APP" "Audio Notes" "$DMG"

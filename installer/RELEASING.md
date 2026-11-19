@@ -49,8 +49,8 @@ git push origin v0.1.0a1
    git push origin v0.1.0
    ```
 3. Watch the Actions run: `test` -> `build` + `build-macos-wheel` -> `publish-pypi` (**approve it**
-   when it pauses). In parallel, `installer` builds `audio-notes-setup-<version>.exe` and creates
-   the GitHub Release; then `installer-mac` adds `Audio-Notes-<version>-arm64.dmg` to it.
+   when it pauses). In parallel, `installer` builds `Audio-Notes-<version>-windows-x64-setup.exe` and creates
+   the GitHub Release; then `installer-mac` adds `Audio-Notes-<version>-macos-arm64.dmg` to it.
 4. Verify: `uv tool install audio-notes==0.1.0` in a clean shell (on Windows and on a Mac; on the
    Mac, `pip download --no-deps audio-notes==0.1.0` should pick the `macosx_14_0_arm64` wheel);
    run the installer and the DMG on clean machines.
@@ -115,7 +115,7 @@ get the pure wheel and cannot record (not supported).
    Windows spec in `installer/spec_common.py`.
 3. Signing, inside-out: every Mach-O in the bundle, then the three executables with
    `installer/entitlements.plist`, then the bundle.
-4. `dmgbuild` with `installer/dmg_settings.py` -> `dist/Audio-Notes-<version>-arm64.dmg` + `.sha256`.
+4. `dmgbuild` with `installer/dmg_settings.py` -> `dist/Audio-Notes-<version>-macos-arm64.dmg` + `.sha256`.
 5. With a Developer ID: sign the DMG, `notarytool submit --wait`, `stapler staple`.
 
 ```bash

@@ -48,7 +48,7 @@ pip / uv. Set `AUDIO_NOTES_DATA_DIR` to put them somewhere else.
 
 ### 1. Install
 
-Download `audio-notes-setup-<version>.exe` from the project's GitHub Releases page and run it
+Download `Audio-Notes-<version>-windows-x64-setup.exe` from the project's GitHub Releases page and run it
 (no Python needed). It adds a Start Menu entry, connects Audio Notes to Claude Desktop, and can
 optionally start with Windows and add the `audio-notes` command to your PATH.
 
@@ -60,7 +60,7 @@ optionally start with Windows and add the `audio-notes` command to your PATH.
 > - Windows 11 with **Smart App Control** enabled may block unsigned programs outright, with no
 >   override. In that case install with uv instead (below).
 > - Antivirus products occasionally flag PyInstaller-built programs as false positives.
-> - To verify your download, compare its SHA256 (`Get-FileHash .\audio-notes-setup-<version>.exe`)
+> - To verify your download, compare its SHA256 (`Get-FileHash .\Audio-Notes-<version>-windows-x64-setup.exe`)
 >   with the hash printed in the release notes on the GitHub Releases page.
 >
 > **Alternative: uv (developers).** Not affected by any of the above:
@@ -77,7 +77,7 @@ optionally start with Windows and add the `audio-notes` command to your PATH.
 
 Audio Notes lives in the menu bar (top right) and has no Dock icon. Two ways to install:
 
-- **App (DMG, from the next release on).** Download `Audio-Notes-<version>-arm64.dmg` from GitHub Releases and drag
+- **App (DMG, from the next release on).** Download `Audio-Notes-<version>-macos-arm64.dmg` from GitHub Releases and drag
   Audio Notes into Applications. Open it from there, not from the disk image. The app is not
   yet notarized, so macOS blocks the first launch: open System Settings > Privacy & Security and
   click **Open Anyway**.

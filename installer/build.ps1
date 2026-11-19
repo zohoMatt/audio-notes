@@ -58,4 +58,4 @@ if (-not $iscc) {
 if (-not $iscc) { Write-Warning "Inno Setup (iscc) not found; skipping installer. Install: winget install JRSoftware.InnoSetup"; return }
 & $iscc "/DAppVersion=$InnoVersion" installer\audio-notes.iss
 if ($LASTEXITCODE) { throw "iscc failed" }
-Write-Host "Installer: dist\audio-notes-setup-$InnoVersion.exe"
+Write-Host "Installer: dist\Audio-Notes-$InnoVersion-windows-x64-setup.exe"
