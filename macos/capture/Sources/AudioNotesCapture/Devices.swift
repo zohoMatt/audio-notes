@@ -111,6 +111,20 @@ func exitWhenDefaultDeviceChanges(output: Bool) {
     if status != noErr { logLine("could not watch the default device (OSStatus \(status))") }
 }
 
+/// Exit with `deviceChanged` when `device`'s nominal sample rate changes (Audio MIDI Setup, or an
+/// app switching it): frames are labelled with the rate read at start, so re-open on the new one.
+func exitWhenSampleRateChanges(_ device: AudioObjectID) {
+    let initial: Float64 = (try? readValue(device, kAudioDevicePropertyNominalSampleRate, initial: Float64(0))) ?? 0
+    var addr = address(kAudioDevicePropertyNominalSampleRate)
+    let status = AudioObjectAddPropertyListenerBlock(device, &addr, DispatchQueue.main) { _, _ in
+        let now: Float64 = (try? readValue(device, kAudioDevicePropertyNominalSampleRate, initial: Float64(0))) ?? 0
+        if now != initial {
+            finish(.deviceChanged, "the output sample rate changed (\(Int(initial)) -> \(Int(now)) Hz)")
+        }
+    }
+    if status != noErr { logLine("could not watch the sample rate (OSStatus \(status))") }
+}
+
 /// Exit with `deviceLost` when `device` disappears (unplugged, Bluetooth disconnected).
 func exitWhenDeviceDies(_ device: AudioObjectID) {
     var addr = address(kAudioDevicePropertyDeviceIsAlive)

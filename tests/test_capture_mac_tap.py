@@ -104,7 +104,7 @@ def test_tap_source_streams_chunks_and_stops(scenario):
     src = TapSource(FAKE, ready_timeout=10)
     c = Collector()
     src.on_lost = c.on_lost
-    origin = time.monotonic()
+    origin = mac_tap.session_clock()  # the sources' clock
     src.start(c.on_chunk, origin)
     try:
         assert src.device_name == "Fake Output" and src.sample_rate == 48000
@@ -274,3 +274,42 @@ def test_recorder_records_from_the_fake_helper_and_recovers_from_a_device_change
         assert rec.is_recording() and rec.last_error() is None
     finally:
         rec.stop()
+
+
+# ---- clocks --------------------------------------------------------------------------------------
+def test_session_clock_counts_through_sleep_on_macos():
+    # time.monotonic() is mach_absolute_time on macOS and stops while the Mac sleeps; the session
+    # clock must not, or transcript times lag the wall clock by the sleep length after a wake.
+    if sys.platform == "darwin":
+        assert abs(mac_tap.session_clock() - time.clock_gettime(time.CLOCK_MONOTONIC)) < 0.5
+    else:
+        assert abs(mac_tap.session_clock() - time.monotonic()) < 0.5
+    assert TapSource()._clock is mac_tap.session_clock
+    assert MicSource()._clock is mac_tap.session_clock
+
+
+def test_recorder_session_origin_uses_the_sources_clock(monkeypatch):
+    import audio_notes.recorder as recorder_mod
+
+    monkeypatch.setattr(recorder_mod.sys, "platform", "darwin")
+    assert recorder_mod.default_clock() is mac_tap.session_clock
+    monkeypatch.setattr(recorder_mod.sys, "platform", "win32")
+    assert recorder_mod.default_clock() is time.monotonic
+
+
+def test_permission_errors_keep_the_settings_path():
+    # Seen on a real Mac: the 160-char cut ended the message at "Screen & System Audio Rec...".
+    from audio_notes.recorder import Recorder, capture_problem
+
+    for mode, page in (("tap", "Screen & System Audio Recording"), ("mic", "Privacy & Security > Microphone")):
+        problem = capture_problem({"them": mac_tap.error_for_exit(mode, mac_tap.EXIT_PERMISSION_DENIED)}, 2)
+        assert problem and problem.endswith(page)
+
+    class Failing:
+        def load(self):
+            raise RuntimeError(capture_problem({"them": mac_tap.error_for_exit("tap", 12)}, 2))
+
+    rec = Recorder(transcriber=Failing(), model_cached=lambda m: True)
+    with pytest.raises(RuntimeError):
+        rec.start()
+    assert rec.last_error().endswith("Screen & System Audio Recording")

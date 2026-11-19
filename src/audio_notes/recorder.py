@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 import sys
 import threading
+import time
 from typing import Callable, Sequence
 
 from audio_notes.asr.base import Transcriber
@@ -26,6 +27,16 @@ SourceFactory = Callable[[bool], Sequence[AudioSource]]
 
 RECOVER_DELAY_S = 1.0  # after a device change, let the OS settle before re-opening streams
 RETRY_INTERVAL_S = 3.0  # while system audio cannot be re-opened, try again this often
+
+
+def default_clock() -> Callable[[], float]:
+    """The clock for the session origin; it must match the one the sources date chunks with.
+    macOS: a clock that keeps counting through sleep (see mac_tap.session_clock)."""
+    if sys.platform == "darwin":
+        from audio_notes.capture.mac_tap import session_clock
+
+        return session_clock
+    return time.monotonic
 
 
 def default_sources(mic: bool) -> list[AudioSource]:
@@ -255,6 +266,7 @@ class Recorder:
             writer,
             vad_factory=lambda: VadSegmenter(silence_ms=cfg.vad_silence_ms, max_s=cfg.vad_max_s),
             on_source_lost=on_lost,
+            clock=default_clock(),
         )
         session = _Session(runner, writer, len(sources))
         holder.append(session)
@@ -304,6 +316,9 @@ class Recorder:
             log.info("audio capture re-bound")
 
 
+MAX_ERROR_CHARS = 300  # long enough for "Cannot capture audio: <permission hint + Settings path>"
+
+
 def _short(exc: BaseException) -> str:
     text = str(exc).strip() or type(exc).__name__
-    return text if len(text) <= 160 else text[:157] + "..."
+    return text if len(text) <= MAX_ERROR_CHARS else text[:MAX_ERROR_CHARS - 3] + "..."
