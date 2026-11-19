@@ -43,15 +43,15 @@ become part of that conversation. See [What stays on your computer](#what-stays-
 
 | | Supported |
 |---|---|
-| Windows | 10 and 11, 64-bit |
-| macOS | 14.2 (Sonoma) or later, Apple Silicon (M1 or newer). Intel Macs are not supported |
+| 🪟 Windows | 10 and 11, 64-bit |
+| 🍎 macOS | 14.2 (Sonoma) or later, Apple Silicon (M1 or newer). Intel Macs are not supported |
 | Linux | Not supported |
 
 ## Quick start
 
 ### 1. Install
 
-#### Windows
+#### 🪟 Windows
 
 Download `Audio-Notes-<version>-windows-x64-setup.exe` from
 [GitHub Releases](https://github.com/zohoMatt/audio-notes/releases) and run it (no Python needed).
@@ -68,7 +68,7 @@ It adds a Start Menu entry, connects Audio Notes to Claude Desktop, and can opti
 >   (`Get-FileHash .\Audio-Notes-<version>-windows-x64-setup.exe`) with the hash in the release
 >   notes.
 
-#### macOS
+#### 🍎 macOS
 
 Download `Audio-Notes-<version>-macos-arm64.dmg` from
 [GitHub Releases](https://github.com/zohoMatt/audio-notes/releases) (starting with the next
@@ -83,7 +83,9 @@ On first launch Audio Notes shows a short recording notice, explains its two per
 macOS asks for **Microphone** and **System Audio Recording**. Allow both. Audio Notes lives in the
 menu bar at the top right and has no Dock icon.
 
-#### Either platform: uv (developers)
+<a id="install-with-uv"></a>
+
+#### ⌨️ Either platform: uv (developers)
 
 ```bash
 uv tool install git+https://github.com/zohoMatt/audio-notes
@@ -96,18 +98,18 @@ macOS this compiles the capture helper, so it needs the Command Line Tools
 (`xcode-select --install`). With uv, connect to Claude yourself (see
 [Connect to Claude](#connect-to-claude)).
 
-> **macOS: start Audio Notes from Terminal, iTerm or the app, not from an IDE or from Claude.**
+> **🍎 macOS: start Audio Notes from Terminal, iTerm or the app, not from an IDE or from Claude.**
 > macOS grants the permissions to the app that started Audio Notes. It won't grant System Audio
 > Recording to an IDE or to Claude, so Audio Notes refuses to record there instead of recording
 > silence. `audio-notes devices` shows which app the permissions go to.
 
 ### 2. Open the panel
 
-- **Windows:** start **Audio Notes** from the Start Menu. The icon
+- **🪟 Windows:** start **Audio Notes** from the Start Menu. The icon
   <img src="docs/tray-icon.png" alt="Audio Notes icon" width="20" height="20"> appears in the
   taskbar's notification area (click the `^` arrow if it is hidden). Click it to open the panel;
   right-click it for the full menu.
-- **macOS:** click the pencil icon in the menu bar and choose **Open Panel…**.
+- **🍎 macOS:** click the pencil icon in the menu bar and choose **Open Panel…**.
 
 The panel is a local page in your browser, served from your own computer: a live transcript and
 your past sessions.
@@ -136,16 +138,16 @@ The first time Claude uses an Audio Notes tool it asks for permission. Click **A
 
 ## Connect to Claude
 
-1. **Quit Claude Desktop completely.** Windows: also quit it from its icon in the notification
-   area. macOS: ⌘Q. Claude Desktop rewrites its config file while it runs and when it exits, so an
+1. **Quit Claude Desktop completely.** 🪟 Windows: also quit it from its icon in the notification
+   area. 🍎 macOS: ⌘Q. Claude Desktop rewrites its config file while it runs and when it exits, so an
    entry added while it is open gets erased.
 2. **Add Audio Notes to Claude's config:**
-   - **Windows:** keep the installer's "Connect to Claude Desktop" option ticked (the default) and
+   - **🪟 Windows:** keep the installer's "Connect to Claude Desktop" option ticked (the default) and
      setup does it for you. If you unticked it or installed Claude Desktop later, right-click the
      Audio Notes icon in the notification area and choose **Connect to Claude…**.
-   - **macOS:** move Audio Notes into Applications first (it won't connect while running from the
+   - **🍎 macOS:** move Audio Notes into Applications first (it won't connect while running from the
      disk image), open it, click the pencil icon in the menu bar and choose **Connect to Claude…**.
-   - **Command line** (uv installs on either platform, or any install with the `audio-notes`
+   - **⌨️ Command line** (uv installs on either platform, or any install with the `audio-notes`
      command):
 
      ```bash
@@ -170,7 +172,7 @@ does not touch Claude's config.
 Claude gets four tools: `get_transcript`, `search_transcript`, `list_sessions`, `get_status`.
 Sessions are named Stream001, Stream002, … (oldest first), so you can ask about "Stream007".
 
-Command line:
+⌨️ Command line:
 
 | Command | What it does |
 |---|---|
@@ -186,18 +188,18 @@ Command line:
 
 Where the command is:
 
-- **Windows installer:** `audio-notes` if you ticked "Add to PATH", otherwise
+- **🪟 Windows installer:** `audio-notes` if you ticked "Add to PATH", otherwise
   `"C:\Program Files\Audio Notes\audio-notes.exe"` (or wherever you installed it).
-- **macOS app:** `"/Applications/Audio Notes.app/Contents/MacOS/audio-notes"`.
-- **uv:** `audio-notes`.
+- **🍎 macOS app:** `"/Applications/Audio Notes.app/Contents/MacOS/audio-notes"`.
+- **⌨️ uv:** `audio-notes`.
 
 Where transcripts are stored (set `AUDIO_NOTES_DATA_DIR` to use another folder):
 
 | Install | Transcripts | Log |
 |---|---|---|
-| Windows installer | `data` folder next to the program | same folder |
-| Windows, uv / pip | `%APPDATA%\audio-notes\` | same folder |
-| macOS (app or uv) | `~/Library/Application Support/Audio Notes/` | `~/Library/Logs/Audio Notes/` |
+| 🪟 Windows installer | `data` folder next to the program | same folder |
+| 🪟 Windows, uv / pip | `%APPDATA%\audio-notes\` | same folder |
+| 🍎 macOS (app or uv) | `~/Library/Application Support/Audio Notes/` | `~/Library/Logs/Audio Notes/` |
 
 ## What stays on your computer
 
@@ -227,9 +229,9 @@ law forbids it.
   the same speech may appear twice (once as "Them", once as "Me").
 - **English only.** Transcription is set to English; other languages come out as poor English
   text, even with a multilingual model.
-- **Windows:** applications that open the audio device in **WASAPI exclusive mode** bypass the
+- **🪟 Windows:** applications that open the audio device in **WASAPI exclusive mode** bypass the
   shared mixer; their audio is **not captured**. The installer is not code-signed.
-- **macOS:** Apple Silicon only. The app is not yet notarized. System Audio Recording can't be
+- **🍎 macOS:** Apple Silicon only. The app is not yet notarized. System Audio Recording can't be
   granted when Audio Notes is started from an IDE or from Claude. Notifications appear under
   "Script Editor".
 
@@ -245,7 +247,7 @@ uv run pytest
 Swift capture helper in `macos/capture` (rebuild it after Swift changes with
 `swift build -c release --package-path macos/capture`).
 
-**macOS: keep the virtual environment out of iCloud.** If the checkout is in `~/Documents` or
+**🍎 macOS: keep the virtual environment out of iCloud.** If the checkout is in `~/Documents` or
 `~/Desktop` with iCloud Drive's "Desktop & Documents" sync on, iCloud marks `.venv` as hidden a
 few seconds after it is created, and Python skips hidden `.pth` files. The editable install then
 stops working: subprocesses and the MCP / end-to-end tests fail with
@@ -273,7 +275,7 @@ uv run audio-notes record --no-mic   # record system audio without any UI; Ctrl+
 uv run audio-notes sessions          # then: show, status
 ```
 
-On macOS run these from Terminal or iTerm (see the note under [Install](#either-platform-uv-developers)).
+On macOS run these from Terminal or iTerm (see the note under [Install](#install-with-uv)).
 
 Run the whole pipeline without speakers or a microphone, from the test recordings:
 
@@ -312,7 +314,7 @@ per platform removes all of it, so the next run behaves like a first install. Qu
 completely first (it rewrites its config while running, and the scripts skip that config if it is
 open), and restart Claude Code sessions afterwards.
 
-**Windows** (PowerShell, from the repository):
+**🪟 Windows** (PowerShell, from the repository):
 
 ```powershell
 .\scripts\clean_dev_windows.ps1 -DryRun   # show what would be done
@@ -324,7 +326,7 @@ Audio Notes entry from every Claude Desktop config, our `claude_desktop_config.j
 backups, the Claude Code registrations (user scope, every project's local scope, project
 `.mcp.json`) and the transcripts folders. `-PurgeModels` also deletes the downloaded speech models.
 
-**macOS** (from the repository):
+**🍎 macOS** (from the repository):
 
 ```bash
 scripts/clean_dev_mac.sh --dry-run   # show what would be done

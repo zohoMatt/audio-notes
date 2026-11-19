@@ -41,8 +41,8 @@ become part of that conversation. See "What stays on your computer" below.
 
 | | Supported |
 |---|---|
-| Windows | 10 and 11, 64-bit |
-| macOS | 14.2 (Sonoma) or later, Apple Silicon (M1 or newer). Intel Macs are not supported |
+| 🪟 Windows | 10 and 11, 64-bit |
+| 🍎 macOS | 14.2 (Sonoma) or later, Apple Silicon (M1 or newer). Intel Macs are not supported |
 | Linux | Not supported |
 
 ## Quick start
@@ -63,7 +63,7 @@ Prefer a regular Windows installer or a macOS app, with no Python needed? Downlo
 [GitHub Releases](https://github.com/zohoMatt/audio-notes/releases/latest). The installer also
 connects Audio Notes to Claude Desktop for you.
 
-> **macOS: start Audio Notes from Terminal, iTerm or the app, not from an IDE or from Claude.**
+> **🍎 macOS: start Audio Notes from Terminal, iTerm or the app, not from an IDE or from Claude.**
 > macOS grants the permissions to the app that started Audio Notes. It won't grant System Audio
 > Recording to an IDE or to Claude, so Audio Notes refuses to record there instead of recording
 > silence. `audio-notes devices` shows which app the permissions go to.
@@ -73,9 +73,9 @@ permissions, and macOS asks for **Microphone** and **System Audio Recording**. A
 
 ### 2. Open the panel
 
-- **Windows:** the Audio Notes icon appears in the taskbar's notification area (click the `^` arrow
+- **🪟 Windows:** the Audio Notes icon appears in the taskbar's notification area (click the `^` arrow
   if it is hidden). Click it to open the panel; right-click it for the full menu.
-- **macOS:** click the pencil icon in the menu bar and choose **Open Panel…**.
+- **🍎 macOS:** click the pencil icon in the menu bar and choose **Open Panel…**.
 
 The panel is a local page in your browser, served from your own computer: a live transcript and
 your past sessions.
@@ -104,14 +104,14 @@ The first time Claude uses an Audio Notes tool it asks for permission. Click **A
 
 ## Connect to Claude
 
-1. **Quit Claude Desktop completely.** Windows: also quit it from its icon in the notification
-   area. macOS: ⌘Q. Claude Desktop rewrites its config file while it runs and when it exits, so an
+1. **Quit Claude Desktop completely.** 🪟 Windows: also quit it from its icon in the notification
+   area. 🍎 macOS: ⌘Q. Claude Desktop rewrites its config file while it runs and when it exits, so an
    entry added while it is open gets erased.
 2. **Add Audio Notes to Claude's config:**
-   - **Windows:** right-click the Audio Notes icon in the notification area and choose
+   - **🪟 Windows:** right-click the Audio Notes icon in the notification area and choose
      **Connect to Claude…**. (The Windows installer from GitHub Releases does this during setup.)
-   - **macOS:** click the pencil icon in the menu bar and choose **Connect to Claude…**.
-   - **Command line** (either platform):
+   - **🍎 macOS:** click the pencil icon in the menu bar and choose **Connect to Claude…**.
+   - **⌨️ Command line** (either platform):
 
      ```bash
      audio-notes setup claude                 # print the Claude Desktop entry and the `claude mcp add` command for Claude Code
@@ -150,8 +150,8 @@ Where transcripts are stored (set `AUDIO_NOTES_DATA_DIR` to use another folder):
 
 | Platform | Transcripts | Log |
 |---|---|---|
-| Windows | `%APPDATA%\audio-notes\` | same folder |
-| macOS | `~/Library/Application Support/Audio Notes/` | `~/Library/Logs/Audio Notes/` |
+| 🪟 Windows | `%APPDATA%\audio-notes\` | same folder |
+| 🍎 macOS | `~/Library/Application Support/Audio Notes/` | `~/Library/Logs/Audio Notes/` |
 
 ## What stays on your computer
 
@@ -181,9 +181,9 @@ law forbids it.
   the same speech may appear twice (once as "Them", once as "Me").
 - **English only.** Transcription is set to English; other languages come out as poor English
   text, even with a multilingual model.
-- **Windows:** applications that open the audio device in **WASAPI exclusive mode** bypass the
+- **🪟 Windows:** applications that open the audio device in **WASAPI exclusive mode** bypass the
   shared mixer; their audio is **not captured**.
-- **macOS:** Apple Silicon only. System Audio Recording can't be granted when Audio Notes is
+- **🍎 macOS:** Apple Silicon only. System Audio Recording can't be granted when Audio Notes is
   started from an IDE or from Claude. Notifications appear under "Script Editor".
 
 Source code, development notes and the installers:
