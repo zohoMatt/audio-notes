@@ -39,6 +39,7 @@ ACTIVITY_REASON = "Audio Notes is recording and transcribing"
 MENUBAR_HINT = "Audio Notes is in the menu bar, at the top right of the screen."
 
 _app_ready = False
+_app_icon: Any = None
 
 
 # ---- AppKit helpers --------------------------------------------------------------------------
@@ -50,12 +51,22 @@ def _ensure_app() -> Any:
     app = AppKit.NSApplication.sharedApplication()
     if not _app_ready:
         app.setActivationPolicy_(AppKit.NSApplicationActivationPolicyAccessory)
-        try:
-            app.setApplicationIconImage_(pil_to_nsimage([app_icon(256)], 256))
-        except Exception:  # noqa: BLE001 - cosmetic
-            log.debug("could not set the application icon", exc_info=True)
+        icon = app_icon_image()
+        if icon is not None:
+            app.setApplicationIconImage_(icon)
         _app_ready = True
     return app
+
+
+def app_icon_image() -> Any:
+    """Our app icon as an NSImage (cached), or None if it cannot be drawn."""
+    global _app_icon
+    if _app_icon is None:
+        try:
+            _app_icon = pil_to_nsimage([app_icon(128), app_icon(256)], 128)
+        except Exception:  # noqa: BLE001 - cosmetic
+            log.debug("could not draw the application icon", exc_info=True)
+    return _app_icon
 
 
 def pil_to_nsimage(images: Sequence[Any], size_pt: float, template: bool = False) -> Any:
@@ -113,6 +124,11 @@ def alert(title: str, message: str, buttons: Sequence[str] = ("OK",), warning: b
         a.setMessageText_(title)
         a.setInformativeText_(message)
         a.setAlertStyle_(AppKit.NSAlertStyleWarning if warning else AppKit.NSAlertStyleInformational)
+        # Set explicitly: run from a terminal there is no bundle, and on macOS 26 NSAlert shows a
+        # generic folder icon even after setApplicationIconImage_.
+        icon = app_icon_image()
+        if icon is not None:
+            a.setIcon_(icon)
         for b in buttons:
             a.addButtonWithTitle_(b)
         app.activateIgnoringOtherApps_(True)  # an accessory app is not frontmost by itself

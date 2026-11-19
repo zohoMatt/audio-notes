@@ -131,6 +131,7 @@ def test_permission_items_appear_only_when_needed():
 def test_update_and_about_texts_mention_the_version():
     assert "uv tool upgrade audio-notes" in mac_menu.updates_message("1.2.3")
     assert "1.2.3" in mac_menu.updates_message("1.2.3") and "1.2.3" in mac_menu.about_message("1.2.3")
+    assert "Matt Zuo" in mac_menu.about_message("1.2.3")
 
 
 # ---- icons -------------------------------------------------------------------------------------

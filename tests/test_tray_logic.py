@@ -147,6 +147,7 @@ class FakeController:
 
 
 def make_app(ctrl=None, **kw):
+    kw.setdefault("claude_running", lambda: False)  # never look at the real Claude Desktop
     return TrayApp(ctrl or FakeController(), "http://127.0.0.1:1/?token=t", **kw)
 
 
@@ -209,6 +210,29 @@ def test_connect_to_claude_declined_and_failure(tmp_path):
 
     app = make_app(confirm=lambda t, m: True, merge_config=boom, claude_config_path=lambda: Path("x"))
     app.connect_to_claude()  # reports via notification/log, must not raise
+
+
+def test_connect_to_claude_asks_again_while_claude_desktop_runs(tmp_path):
+    cfg = tmp_path / "claude.json"
+    cfg.write_text("{}")
+    merged, asked = [], []
+    running = [True, True, True]  # running when asked, and after the first Continue
+
+    app = make_app(
+        confirm=lambda t, m: asked.append(m) or True,
+        merge_config=merged.append,
+        claude_config_path=lambda: cfg,
+        claude_running=lambda: running.pop(0) if running else False,
+    )
+    app.connect_to_claude()  # the user quits Claude Desktop before the second Continue
+    assert "Claude Desktop is running" in asked[0] and "still running" in asked[1]
+    assert len(asked) == 2 and merged == [cfg]
+
+    merged.clear()
+    app = make_app(confirm=lambda t, m: False, merge_config=merged.append,
+                   claude_config_path=lambda: cfg, claude_running=lambda: True)
+    app.connect_to_claude()  # Cancel while it still runs: nothing written
+    assert merged == []
 
 
 def test_connect_to_claude_not_installed_skips_prompt_and_merge(tmp_path):
