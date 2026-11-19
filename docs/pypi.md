@@ -107,14 +107,17 @@ The first time Claude uses an Audio Notes tool it asks for permission. Click **A
 1. **Quit Claude Desktop completely.** Windows: also quit it from its icon in the notification
    area. macOS: ⌘Q. Claude Desktop rewrites its config file while it runs and when it exits, so an
    entry added while it is open gets erased.
-2. **Add Audio Notes to Claude's config**, either by choosing **Connect to Claude…** in the tray /
-   menu bar menu, or from the command line:
+2. **Add Audio Notes to Claude's config:**
+   - **Windows:** right-click the Audio Notes icon in the notification area and choose
+     **Connect to Claude…**. (The Windows installer from GitHub Releases does this during setup.)
+   - **macOS:** click the pencil icon in the menu bar and choose **Connect to Claude…**.
+   - **Command line** (either platform):
 
-   ```bash
-   audio-notes setup claude                 # print the Claude Desktop entry and the `claude mcp add` command for Claude Code
-   audio-notes setup claude --write         # merge it into Claude Desktop's config (asks first, makes a backup)
-   audio-notes setup claude --write --yes   # same, without asking (exit code 3: Claude Desktop not installed)
-   ```
+     ```bash
+     audio-notes setup claude                 # print the Claude Desktop entry and the `claude mcp add` command for Claude Code
+     audio-notes setup claude --write         # merge it into Claude Desktop's config (asks first, makes a backup)
+     audio-notes setup claude --write --yes   # same, without asking (exit code 3: Claude Desktop not installed)
+     ```
 3. **Start Claude Desktop.** Click **+** in the message box, open **Connectors**, and check that
    **Audio Notes** is listed and turned on.
 
