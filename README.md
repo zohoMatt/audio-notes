@@ -179,6 +179,23 @@ uv sync
 uv run pytest
 ```
 
+`uv sync` uses Python 3.12, pinned in `.python-version` (the version the macOS CI job runs).
+Installing with `uv tool install` works with any Python from 3.10 to 3.14.
+
+**macOS: keep the virtual environment out of iCloud.** If the checkout is in `~/Documents` or
+`~/Desktop` with iCloud Drive's "Desktop & Documents" sync on, iCloud marks `.venv` as hidden a
+few seconds after it is created, and Python skips hidden `.pth` files. The editable install then
+stops working: subprocesses and the MCP / end-to-end tests fail with
+`No module named 'audio_notes'` (`ls -lO .venv/lib/python*/site-packages/*.pth` shows `hidden`).
+Clone the repository somewhere iCloud doesn't sync, or keep the environment elsewhere, for example
+in `~/.zshrc`:
+
+```bash
+export UV_PROJECT_ENVIRONMENT="$HOME/.venvs/audio-notes"
+```
+
+`chflags -R nohidden .venv` fixes a broken environment until iCloud hides it again.
+
 Releasing: see [installer/RELEASING.md](installer/RELEASING.md).
 
 ### Running from source
