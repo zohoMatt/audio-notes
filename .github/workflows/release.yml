@@ -46,8 +46,31 @@ jobs:
 
   # PyPI publishing stays off until you set the repository variable PUBLISH_TO_PYPI to "true"
   # (Settings > Secrets and variables > Actions > Variables) after configuring Trusted Publishing.
+  # macOS wheel (py3-none-macosx_14_0_arm64) with the compiled Swift capture helper inside
+  # (hatch_build.py). Published next to the pure-Python wheel; pip / uv on a Mac prefer it.
+  build-macos-wheel:
+    needs: test
+    runs-on: macos-15 # Apple Silicon
+    steps:
+      - uses: actions/checkout@v4.2.2
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v6.3.1
+      - run: uv build --wheel
+      - name: Check the wheel tag and the capture helper inside it
+        run: |
+          set -euo pipefail
+          ls dist/
+          whl=$(ls dist/*-py3-none-macosx_14_0_arm64.whl)
+          unzip -Z "$whl" audio_notes/capture/bin/audio-notes-capture | tee /dev/stderr | grep -q '^-rwx'
+      - uses: actions/upload-artifact@v4.6.2
+        with:
+          name: dist-macos
+          path: dist/*.whl
+          if-no-files-found: error
+
   publish-pypi:
-    needs: build
+    needs: [build, build-macos-wheel]
     if: startsWith(github.ref, 'refs/tags/v') && vars.PUBLISH_TO_PYPI == 'true'
     runs-on: ubuntu-latest
     # The `pypi` environment must have "Required reviewers" set: that is the manual approval gate.
@@ -59,8 +82,10 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4.3.0
         with:
-          name: dist
+          pattern: dist* # dist (sdist + pure-Python wheel) and dist-macos (macOS wheel)
           path: dist/
+          merge-multiple: true
+      - run: ls dist/
       - uses: pypa/gh-action-pypi-publish@v1.12.4
 
   installer:
@@ -115,3 +140,113 @@ jobs:
           body_path: release-body.md
           generate_release_notes: true
           prerelease: ${{ steps.pre.outputs.prerelease == 'true' }}
+
+  # macOS: Audio Notes.app in a DMG (installer/build_mac.sh). Without the signing secrets below the
+  # app is ad-hoc signed and not notarized; it still builds and is attached to the Release.
+  # Runs after the Windows `installer` job so only that job creates the GitHub Release; this one
+  # adds the DMG and appends its SHA256 to the notes. Secrets (Settings > Secrets > Actions):
+  #   MACOS_CERTIFICATE_P12        base64 of the "Developer ID Application" certificate (.p12)
+  #   MACOS_CERTIFICATE_PASSWORD   its export password
+  #   MACOS_SIGN_IDENTITY          e.g. "Developer ID Application: Your Name (TEAMID)"
+  #   NOTARY_API_KEY_P8            base64 of the App Store Connect API key (.p8), for notarytool
+  #   NOTARY_KEY_ID, NOTARY_ISSUER that key's id and issuer id
+  installer-mac:
+    needs: installer
+    runs-on: macos-15 # Apple Silicon
+    permissions:
+      contents: write # add the DMG to the GitHub Release
+    env:
+      HAS_SIGNING: ${{ secrets.MACOS_CERTIFICATE_P12 != '' && secrets.MACOS_SIGN_IDENTITY != '' }}
+      HAS_NOTARY: ${{ secrets.NOTARY_API_KEY_P8 != '' && secrets.NOTARY_KEY_ID != '' && secrets.NOTARY_ISSUER != '' }}
+    steps:
+      - uses: actions/checkout@v4.2.2
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v6.3.1
+        with:
+          python-version: "3.12"
+      - name: Import the Developer ID certificate (skipped without secrets -> ad-hoc)
+        if: env.HAS_SIGNING == 'true'
+        env:
+          P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          P12_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+        run: |
+          set -euo pipefail
+          kc="$RUNNER_TEMP/signing.keychain-db"
+          kc_pw="$(uuidgen)"
+          echo "$P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$kc_pw" "$kc"
+          security set-keychain-settings -lut 21600 "$kc"
+          security unlock-keychain -p "$kc_pw" "$kc"
+          security import "$RUNNER_TEMP/cert.p12" -k "$kc" -P "$P12_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$kc_pw" "$kc" > /dev/null
+          security list-keychains -d user -s "$kc" $(security list-keychains -d user | tr -d '"')
+          rm "$RUNNER_TEMP/cert.p12"
+          echo "MACOS_SIGN_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
+      - name: Write the notarization key (skipped without secrets)
+        if: env.HAS_SIGNING == 'true' && env.HAS_NOTARY == 'true'
+        env:
+          P8: ${{ secrets.NOTARY_API_KEY_P8 }}
+          KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          ISSUER: ${{ secrets.NOTARY_ISSUER }}
+        run: |
+          set -euo pipefail
+          echo "$P8" | base64 --decode > "$RUNNER_TEMP/notary.p8"
+          {
+            echo "NOTARY_KEY_PATH=$RUNNER_TEMP/notary.p8"
+            echo "NOTARY_KEY_ID=$KEY_ID"
+            echo "NOTARY_ISSUER=$ISSUER"
+          } >> "$GITHUB_ENV"
+      - name: Build the app and the DMG
+        env:
+          AUDIO_NOTES_BUILD_NUMBER: ${{ github.run_number }}
+        run: ./installer/build_mac.sh
+      # OPTIONAL: drop this step to remove the smoke test (same script as on Windows).
+      - name: Smoke test (optional)
+        run: python3 installer/smoke_test.py "dist/Audio Notes.app/Contents/MacOS/audio-notes"
+      - name: Release notes for the DMG
+        run: |
+          set -euo pipefail
+          {
+            echo "### macOS DMG SHA256"
+            echo
+            echo "\`$(cat dist/Audio-Notes-*-arm64.dmg.sha256)\`"
+            echo
+            if [ "$HAS_SIGNING" = true ] && [ "$HAS_NOTARY" = true ]; then
+              echo "Signed with a Developer ID and notarized by Apple."
+            else
+              echo "**The macOS app is not notarized** (ad-hoc signed). After dragging it to Applications,"
+              echo "open it once via System Settings > Privacy & Security > Open Anyway, or run"
+              echo "\`xattr -dr com.apple.quarantine \"/Applications/Audio Notes.app\"\`."
+              echo "Microphone and system audio permissions may be asked again after each update."
+            fi
+          } > release-body-mac.md
+          cat release-body-mac.md
+      - name: Keep the DMG as a workflow artifact (also on manual runs)
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: installer-mac
+          path: |
+            dist/Audio-Notes-*-arm64.dmg
+            dist/Audio-Notes-*-arm64.dmg.sha256
+          if-no-files-found: error
+      - name: Detect pre-release tag (v0.1.0a1, v0.1.0rc1, v0.1.0.dev1)
+        id: pre
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          if [[ "$GITHUB_REF_NAME" =~ [0-9](a|b|rc)[0-9]+$|\.dev[0-9]+$ ]]; then pre=true; else pre=false; fi
+          echo "prerelease=$pre" >> "$GITHUB_OUTPUT"
+      - name: Add the DMG to the GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2.2.2
+        with:
+          files: |
+            dist/Audio-Notes-*-arm64.dmg
+            dist/Audio-Notes-*-arm64.dmg.sha256
+          body_path: release-body-mac.md
+          append_body: true
+          prerelease: ${{ steps.pre.outputs.prerelease == 'true' }}
+      - name: Remove the signing keychain
+        if: always() && env.HAS_SIGNING == 'true'
+        run: security delete-keychain "$RUNNER_TEMP/signing.keychain-db" || true

@@ -6,8 +6,8 @@ things on the first tag (try a `v0.0.1rc1`-style tag first; PyPI versions can ne
 
 ## Installer only (no PyPI setup needed)
 
-The installer job does not depend on PyPI. Pushing a tag builds the Windows installer and attaches
-it to a GitHub Release, with its SHA256 in the notes:
+The installer jobs do not depend on PyPI. Pushing a tag builds the Windows installer and the
+macOS DMG and attaches both to a GitHub Release, with their SHA256 in the notes:
 
 ```
 git tag v0.1.0a1
@@ -18,8 +18,8 @@ git push origin v0.1.0a1
 - The PyPI jobs are skipped until you set the repository variable `PUBLISH_TO_PYPI` to `true`
   (Settings > Secrets and variables > Actions > Variables), after the setup below.
 - To try the build without publishing anything: Actions tab > Release > "Run workflow". The
-  installer is then available as the `installer` workflow artifact (kept for a limited time);
-  no Release is created.
+  installers are then available as the `installer` and `installer-mac` workflow artifacts (kept
+  for a limited time); no Release is created.
 - A pushed tag creates a **public** Release; delete the release and tag on GitHub to retract it.
 
 ## One-time setup (for PyPI)
@@ -48,10 +48,12 @@ git push origin v0.1.0a1
    git tag v0.1.0
    git push origin v0.1.0
    ```
-3. Watch the Actions run: `test` -> `build` -> `publish-pypi` (**approve it**
-   when it pauses). In parallel, `installer` builds `audio-notes-setup-<version>.exe` and attaches
-   it to a GitHub Release.
-4. Verify: `uv tool install audio-notes==0.1.0` in a clean shell; run the installer on a clean machine.
+3. Watch the Actions run: `test` -> `build` + `build-macos-wheel` -> `publish-pypi` (**approve it**
+   when it pauses). In parallel, `installer` builds `audio-notes-setup-<version>.exe` and creates
+   the GitHub Release; then `installer-mac` adds `Audio-Notes-<version>-arm64.dmg` to it.
+4. Verify: `uv tool install audio-notes==0.1.0` in a clean shell (on Windows and on a Mac; on the
+   Mac, `pip download --no-deps audio-notes==0.1.0` should pick the `macosx_14_0_arm64` wheel);
+   run the installer and the DMG on clean machines.
 
 ## SmartScreen and antivirus
 
@@ -95,3 +97,60 @@ Inno Setup: `winget install JRSoftware.InnoSetup`.
 
 It is optional and isolated: delete `installer/smoke_test.py` and the `Smoke test` step in the
 `installer` job of `release.yml`.
+
+## macOS: wheel, app and DMG
+
+**PyPI.** `build-macos-wheel` (macos-15, Apple Silicon) runs `uv build --wheel`; `hatch_build.py`
+compiles `macos/capture` and puts the helper at `audio_notes/capture/bin/audio-notes-capture`, so
+the wheel is tagged `py3-none-macosx_14_0_arm64`. `publish-pypi` uploads it together with the
+sdist and the pure-Python wheel from `build`. pip / uv on a Mac pick the macOS wheel; Intel Macs
+get the pure wheel and cannot record (not supported).
+
+**App and DMG.** `installer/build_mac.sh` does everything, locally and in CI:
+
+1. `swift build -c release --package-path macos/capture`
+2. PyInstaller `installer/audio-notes-mac.spec` -> `dist/Audio Notes.app` with three executables in
+   `Contents/MacOS`: `Audio Notes` (menu bar; with arguments it acts as the CLI), `audio-notes`
+   (CLI, `mcp` for Claude) and `audio-notes-capture`. Dependency collection is shared with the
+   Windows spec in `installer/spec_common.py`.
+3. Signing, inside-out: every Mach-O in the bundle, then the three executables with
+   `installer/entitlements.plist`, then the bundle.
+4. `dmgbuild` with `installer/dmg_settings.py` -> `dist/Audio-Notes-<version>-arm64.dmg` + `.sha256`.
+5. With a Developer ID: sign the DMG, `notarytool submit --wait`, `stapler staple`.
+
+```bash
+installer/build_mac.sh               # needs uv and the Command Line Tools (Xcode not required)
+installer/build_mac.sh --skip-dmg    # only the .app
+python3 installer/smoke_test.py "dist/Audio Notes.app/Contents/MacOS/audio-notes"
+```
+
+If the checkout is under `~/Documents` with iCloud Drive "Desktop & Documents" on, build outside
+it, otherwise codesign fails ("resource fork, Finder information, or similar detritus"):
+`AUDIO_NOTES_BUILD_DIR=/tmp/an/build AUDIO_NOTES_DIST_DIR=/tmp/an/dist installer/build_mac.sh`.
+
+The app icon is `installer/AudioNotes.icns`; regenerate it with
+`uv run python installer/make_icon.py --icns` (macOS only, uses `iconutil`).
+
+### Without a Developer ID (now)
+
+`MACOS_SIGN_IDENTITY` is unset, so the app is **ad-hoc signed** (no Hardened Runtime, nothing
+notarized). The `installer-mac` job still builds the DMG and adds it to the Release with a note
+explaining how to open it (System Settings > Privacy & Security > Open Anyway, or
+`xattr -dr com.apple.quarantine "/Applications/Audio Notes.app"`). The ad-hoc signature changes
+with every build, so macOS asks for microphone / system audio permission again after an update.
+
+### Turning on signing and notarization (later)
+
+1. Join the Apple Developer Program, create a **Developer ID Application** certificate, export it
+   with its private key as `.p12`.
+2. App Store Connect > Users and Access > Integrations > App Store Connect API: create a key
+  ; download the `.p8`, note its key id and issuer id.
+3. Add repository secrets: `MACOS_CERTIFICATE_P12` (`base64 -i cert.p12`),
+   `MACOS_CERTIFICATE_PASSWORD`, `MACOS_SIGN_IDENTITY` (e.g.
+   `Developer ID Application: Your Name (TEAMID)`), `NOTARY_API_KEY_P8` (`base64 -i AuthKey_X.p8`),
+   `NOTARY_KEY_ID`, `NOTARY_ISSUER`.
+4. Push a pre-release tag. The job then signs with the Hardened Runtime and a timestamp, and
+   notarizes and staples the DMG. If the notarized app crashes on start, add
+   `com.apple.security.cs.allow-unsigned-executable-memory` to `installer/entitlements.plist`
+   (see the comment there). Locally, the same works with `MACOS_SIGN_IDENTITY` and
+   `NOTARY_KEY_PATH` / `NOTARY_KEY_ID` / `NOTARY_ISSUER` in the environment.
