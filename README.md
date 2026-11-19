@@ -61,6 +61,21 @@ account, no telemetry.
 Transcript lines leave your computer only when you ask Claude about them: the lines Claude reads
 become part of that conversation. See [What stays on your computer](#what-stays-on-your-computer).
 
+### What you can use it for
+
+- 🎓 **Learn from any course or lecture video.** Play it on any site or app, then ask Claude for a
+  summary, the key points, or a quiz on what you just watched.
+- 🤝 **Keep notes of meetings and calls**, with everyone's consent. Ask for a summary, the
+  decisions made, or the action items assigned to you.
+- 📚 **Listen to audiobooks and read-aloud e-books.** Ask about a chapter, look up a passage, or
+  get a recap of where you left off.
+- 🎧 **Get more out of podcasts and talks.** Find what a guest said about a topic, or pull a quote.
+- 🌐 **Follow webinars and live streams.** Catch up on the part you missed while you stepped away.
+- 💡 **Think out loud.** Talk through an idea into your microphone and let Claude turn it into
+  notes or a to-do list.
+
+Transcription is English only for now.
+
 | | Supported |
 |---|---|
 | 🪟 Windows | 10 and 11, 64-bit |
