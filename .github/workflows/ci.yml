@@ -1,9 +1,18 @@
 name: CI
 
+# Changes that only touch documentation, images or the license skip CI.
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - LICENSE
   pull_request:
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - LICENSE
 
 permissions:
   contents: read
