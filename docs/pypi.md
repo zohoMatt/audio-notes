@@ -21,6 +21,26 @@ System audio + microphone → Whisper on your CPU → Claude, over MCP. Audio ne
 
 ---
 
+## ❗ About this project
+
+Most major meeting platforms store and process meeting content in the cloud — recordings,
+transcripts, and summaries. Our conversations end up on third-party servers for long periods, used
+in ways we don't fully control, and we find that deeply unsettling. This tool takes a local-first
+approach: the entire pipeline runs on your own device, built on established community open-source
+tools, and no meeting data is uploaded to any external service. It also spares you from juggling
+each platform's own apps and recording features. Everything is simply saved as plain files on your
+local machine, where you own them and can use them however you like.
+
+## ⚠️ Legal notice
+
+Some U.S. states, and other jurisdictions, have their own recording laws, and some require the
+consent of every participant. This project has not yet been reviewed by legal counsel. You are
+responsible for knowing and complying with the laws that apply to you and to every participant, and
+you must not use this tool to record in violation of any applicable law. The tool displays a clear
+notice whenever a recording is in progress.
+
+---
+
 Audio Notes is a lightweight tool for **Windows** (notification-area icon) and **macOS** (menu bar
 icon). It captures **system audio** (what you hear) and your **microphone**, transcribes both on
 your own CPU with [faster-whisper](https://github.com/SYSTRAN/faster-whisper), and lets Claude read
@@ -167,13 +187,6 @@ Where transcripts are stored (set `AUDIO_NOTES_DATA_DIR` to use another folder):
   are online, and falls back to the cached model if you are not. There is no telemetry and no
   account.
 
-## Legal notice: recording other people
-
-Recording and transcribing conversations may require the consent of everyone involved, and the
-rules differ by country and state (some require all parties to consent). You are solely
-responsible for complying with the laws that apply to you and for telling participants when you
-record meetings or calls. Do not use this tool to record people without their knowledge where the
-law forbids it.
 
 ## Known limitations
 
