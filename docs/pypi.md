@@ -191,7 +191,8 @@ Where transcripts are stored (set `AUDIO_NOTES_DATA_DIR` to use another folder):
 ## Known limitations
 
 - **Headphones recommended.** With speakers, the microphone can pick up the system audio again, so
-  the same speech may appear twice (once as "Them", once as "Me").
+  the same speech may appear twice (once as "Them", once as "Me"). Echo cancellation, which removes
+  the system audio from the microphone, is under development.
 - **English only.** Transcription is set to English; other languages come out as poor English
   text, even with a multilingual model.
 - **🪟 Windows:** applications that open the audio device in **WASAPI exclusive mode** bypass the
