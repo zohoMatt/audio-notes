@@ -82,12 +82,12 @@ your past sessions.
 
 ### 3. Start recording
 
-Click **Start recording** in the panel (or in the tray / menu bar menu). The speech model
-(`base.en` by default) is **downloaded once on first use** and cached; after that everything works
-offline. The icon shows a "downloading" state meanwhile. Set `AUDIO_NOTES_MODEL` to pick another
-faster-whisper model (for example `small.en`).
+Click **Start recording** in the panel (or in the tray / menu bar menu). Lines from your microphone
+are labelled **Me**, lines from system audio **Them**.
 
-Lines from your microphone are labelled **Me**, lines from system audio **Them**.
+> The speech model (`base.en` by default) is downloaded once on first use and cached; after that
+> everything works offline. The icon shows a "downloading" state meanwhile. Set
+> `AUDIO_NOTES_MODEL` to pick another faster-whisper model (for example `small.en`).
 
 ### 4. Ask Claude
 
