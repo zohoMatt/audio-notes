@@ -1,4 +1,4 @@
-"""TrayApp: tray / menu bar icon + menu (F16). `run()` blocks and must be called on the main thread.
+"""TrayApp: tray / menu bar icon + menu. `run()` blocks and must be called on the main thread.
 
 All menu actions are plain methods with injected side effects, so they are testable without any
 GUI toolkit. The native shell is a `TrayBackend` (tray/backend.py): pystray on Windows, an

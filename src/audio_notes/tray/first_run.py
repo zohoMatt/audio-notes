@@ -1,4 +1,4 @@
-"""One-time legal notice (REQUIREMENTS F17) and, on macOS, the one-time permission explanation.
+"""One-time legal notice and, on macOS, the one-time permission explanation.
 Acknowledgement is a flag file in the data dir."""
 
 from __future__ import annotations

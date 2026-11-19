@@ -1,4 +1,4 @@
-"""The macOS menu bar menu as plain data (docs/MACOS.md section 2.2), so its logic is testable on
+"""The macOS menu bar menu as plain data, so its logic is testable on
 any platform. `mac_statusbar.py` turns the entries into an NSMenu each time it opens.
 
 Mac conventions: title case, an ellipsis on items that open a dialog or another app, a grey

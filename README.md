@@ -240,8 +240,7 @@ uv run pytest
 `uv sync` uses Python 3.12, pinned in `.python-version` (the version CI runs on macOS).
 `uv tool install` works with any Python from 3.10 to 3.14. On macOS, `uv sync` also compiles the
 Swift capture helper in `macos/capture` (rebuild it after Swift changes with
-`swift build -c release --package-path macos/capture`). Design notes: [ARCHITECTURE.md](ARCHITECTURE.md)
-and, for macOS, [docs/MACOS.md](docs/MACOS.md).
+`swift build -c release --package-path macos/capture`).
 
 **macOS: keep the virtual environment out of iCloud.** If the checkout is in `~/Documents` or
 `~/Desktop` with iCloud Drive's "Desktop & Documents" sync on, iCloud marks `.venv` as hidden a

@@ -1,6 +1,6 @@
 """Local web panel (Starlette) and the background server that hosts it.
 
-Security (REQUIREMENTS F31): loopback bind only, Host header allow-list, no CORS,
+Security: loopback bind only, Host header allow-list, no CORS,
 a random per-run token on every route, and `Cache-Control: no-store` on everything.
 Transcript data comes only through a `TranscriptReader`; this module must not import the
 capture, asr or processing layers. The one write path, start / pause / resume / stop, goes through an

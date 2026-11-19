@@ -70,7 +70,7 @@ def state():
     }
 
 
-HTML = """<!doctype html><meta charset=utf-8><title>audio-notes track C demo</title>
+HTML = """<!doctype html><meta charset=utf-8><title>Audio Notes store and MCP demo</title>
 <style>body{font:14px system-ui;margin:20px;max-width:1100px}h2{margin:.2em 0}
 .cols{display:flex;gap:20px;flex-wrap:wrap}.col{flex:1;min-width:420px}
 pre{background:#111;color:#ddd;padding:10px;border-radius:6px;white-space:pre-wrap;min-height:60px}

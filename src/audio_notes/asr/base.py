@@ -1,4 +1,4 @@
-"""ASR contract (frozen; see DEV_TRACKS.md before changing)."""
+"""ASR contract (frozen: other modules depend on it; change it with care)."""
 
 from __future__ import annotations
 
